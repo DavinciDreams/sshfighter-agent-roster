@@ -14,7 +14,7 @@ import {
   createStaticGymPolicy, staticProfile,
 } from './policies/static-router-gym.mjs';
 import {
-  parseArgs as parseQuickArgs, run as runQuick, transientQueueError, validateOfficial,
+  DEFAULT_HANDLE, parseArgs as parseQuickArgs, run as runQuick, transientQueueError, validateOfficial,
 } from './tools/static-router-quickmatch.mjs';
 import {
   acquireSupervisorLock, parseArgs as parseSupervisorArgs, runSupervisor,
@@ -41,6 +41,9 @@ const megaCatalog = catalog.runners.find((row) => row.agent === 'MEGA');
 const sharedTransportHash = sha256File(resolve(sourceRoot, 'tools/codex-dgx-omega-quickmatch.mjs'));
 check(omegaCatalog?.runnerSourceSha256 === sharedTransportHash, 'OMEGA catalog pins shared transport bytes');
 check(megaCatalog?.sharedTransportSha256 === sharedTransportHash, 'MEGA catalog pins shared transport bytes');
+check(megaCatalog?.handle === 'MEGA_BOT'
+  && megaCatalog?.expectedFingerprint === 'SHA256:NoCiA/EN3QjY4iBoGRjExbvAqgfYNLKk7cJKWCui8W4'
+  && DEFAULT_HANDLE === 'MEGA_BOT', 'MEGA catalog and runner pin the dedicated bot identity');
 check(megaCatalog?.childRunnerSourceSha256 === sha256File(resolve(sourceRoot, 'tools/static-router-quickmatch.mjs')),
   'MEGA catalog pins child bytes');
 check(megaCatalog?.supervisorSourceSha256 === sha256File(resolve(sourceRoot, 'tools/durable-quickmatch-supervisor.mjs')),
@@ -70,6 +73,17 @@ check(mnemeRows.some((row) => row.reason === 'zoner_far_beam')
 assert.throws(() => parseQuickArgs([]), /choose exactly one/); checks++;
 assert.throws(() => parseQuickArgs(['--armed', '--profile', 'static-byu-jumper']), /requires/); checks++;
 check(parseQuickArgs(['--dry-run', '--profile', 'static-gyle-jumper']).profile.character === 'GYLE', 'quick args bind profile');
+const megaArgs = parseQuickArgs([
+  '--armed', '--identity', '/fake/mega', '--handle', 'MEGA_BOT',
+  '--expected-fingerprint', 'SHA256:abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
+  '--out', '/tmp/mega.jsonl',
+]);
+check(megaArgs.handle === 'MEGA_BOT' && megaArgs.expectedFingerprint.startsWith('SHA256:'),
+  'armed quick args require an explicit identity binding');
+assert.throws(() => parseQuickArgs([
+  '--armed', '--identity', '/fake/mega', '--handle', 'mega bot',
+  '--expected-fingerprint', 'SHA256:abc', '--out', '/tmp/mega.jsonl',
+]), /handle/); checks++;
 check(transientQueueError(new Error('public preflight must report queued as numeric integer zero; got 2')), 'busy queue transient');
 check(!transientQueueError(new Error('got null')), 'malformed queue is fatal');
 
@@ -102,14 +116,18 @@ await wrong.handle({ t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roste
 check(await rejects(wrong.handle({ t: 'queued', char: 'BYU' }), /queued wrong character/), 'wrong queued character rejects');
 
 const official = { match: { id: 'm1', mode: 'versus', engine_version: 'sf-6', a_name: HANDLE, a_char: 'BYU', b_name: 'OPP', b_char: 'XENON', winner: 'a', a_rounds: 2, b_rounds: 1, end_reason: 'ko' } };
-check(validateOfficial(official, 'm1', 'BYU') === official, 'official completion validates');
-assert.throws(() => validateOfficial({ match: { ...official.match, a_char: 'GYLE' } }, 'm1', 'BYU'), /clean uniquely bound/); checks++;
+check(validateOfficial(official, 'm1', 'BYU', HANDLE) === official, 'official completion validates explicit generic handle');
+assert.throws(() => validateOfficial({ match: { ...official.match, a_char: 'GYLE' } }, 'm1', 'BYU', HANDLE), /clean uniquely bound/); checks++;
+const megaOfficial = { match: { ...official.match, a_name: 'MEGA_BOT' } };
+check(validateOfficial(megaOfficial, 'm1', 'BYU') === megaOfficial,
+  'official completion defaults to the dedicated MEGA_BOT handle');
 
 const dry = parseQuickArgs(['--dry-run', '--profile', 'static-byu-jumper']);
 await runQuick(dry); checks++;
 
 const supervisorDry = await runSupervisor(parseSupervisorArgs(['--dry-run']));
-check(supervisorDry.networkAccess === false && supervisorDry.profiles.length === 3, 'supervisor dry run is network free');
+check(supervisorDry.networkAccess === false && supervisorDry.profiles.length === 3
+  && supervisorDry.handle === 'MEGA_BOT', 'supervisor dry run is network free and bot-identity bound');
 
 const lockTemp = mkdtempSync(join(tmpdir(), 'static-router-lock-'));
 const firstLock = acquireSupervisorLock(lockTemp);
@@ -125,7 +143,8 @@ const exits = [0, 75, 0, 0];
 const launched = [], sleeps = [];
 const temp = mkdtempSync(join(tmpdir(), 'static-router-supervisor-'));
 const supervisorResult = await runSupervisor({
-  dryRun: false, identity: '/fake/key', outDir: temp, host: 'example', cooldownMs: 5000,
+  dryRun: false, identity: '/fake/key', handle: 'MEGA', expectedFingerprint: 'SHA256:fixture',
+  outDir: temp, host: 'example', cooldownMs: 5000,
   idleBackoffMs: 6000, maxMatches: 3, maxFailures: 3,
 }, {
   spawnChild(command, args) { const child = new FakeChild(); launched.push({ command, args, child }); return child; },
@@ -137,12 +156,15 @@ check(supervisorResult.completed === 3 && supervisorResult.attempts === 4, 'supe
 check(launched[0].args.includes('static-byu-jumper') && launched[1].args.includes('static-gyle-jumper')
   && launched[2].args.includes('static-gyle-jumper') && launched[3].args.includes('static-mneme-zoner'),
 'transient queue preserves current profile and successful matches rotate');
+check(launched.every((row) => row.args.includes('MEGA') && row.args.includes('SHA256:fixture')),
+  'supervisor forwards the exact handle and fingerprint to every child');
 check(sleeps.join(',') === '5000,6000,5000,5000', 'supervisor applies cooldown and idle backoff');
 rmSync(temp, { recursive: true });
 
 const fatalExits = [1, 1];
 check(await rejects(runSupervisor({
-  dryRun: false, identity: '/fake/key', outDir: mkdtempSync(join(tmpdir(), 'static-router-fatal-')),
+  dryRun: false, identity: '/fake/key', handle: 'MEGA', expectedFingerprint: 'SHA256:fixture',
+  outDir: mkdtempSync(join(tmpdir(), 'static-router-fatal-')),
   host: 'example', cooldownMs: 5000, idleBackoffMs: 5000, maxMatches: 1, maxFailures: 2,
 }, {
   spawnChild: () => new FakeChild(), waitChild: async () => ({ code: fatalExits.shift(), signal: null }), sleep: async () => {},

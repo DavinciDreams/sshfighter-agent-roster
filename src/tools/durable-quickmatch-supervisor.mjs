@@ -9,7 +9,10 @@ import { DURABLE_PROFILES } from '../policies/static-router-gym.mjs';
 export function parseArgs(argv) {
   const values = {};
   let dryRun = false;
-  const allowed = new Set(['identity', 'out-dir', 'host', 'cooldown-ms', 'idle-backoff-ms', 'max-matches', 'max-failures']);
+  const allowed = new Set([
+    'identity', 'handle', 'expected-fingerprint', 'out-dir', 'host',
+    'cooldown-ms', 'idle-backoff-ms', 'max-matches', 'max-failures',
+  ]);
   for (let index = 0; index < argv.length; index++) {
     const raw = argv[index];
     if (raw === '--dry-run') { dryRun = true; continue; }
@@ -18,7 +21,15 @@ export function parseArgs(argv) {
     if (!value || value.startsWith('--')) throw new Error(`${raw} requires a value`);
     values[raw.slice(2)] = value;
   }
-  if (!dryRun && (!values.identity || !values['out-dir'])) throw new Error('live supervisor requires --identity and --out-dir');
+  if (!dryRun && (!values.identity || !values.handle || !values['expected-fingerprint'] || !values['out-dir'])) {
+    throw new Error('live supervisor requires --identity, --handle, --expected-fingerprint, and --out-dir');
+  }
+  if (values.handle && !/^[A-Z0-9_-]{3,12}$/.test(values.handle)) {
+    throw new Error('--handle must be 3-12 uppercase letters, numbers, underscores, or hyphens');
+  }
+  if (values['expected-fingerprint'] && !/^SHA256:[A-Za-z0-9+/=]+$/.test(values['expected-fingerprint'])) {
+    throw new Error('--expected-fingerprint must be an SHA256 SSH fingerprint');
+  }
   const numeric = (name, fallback, minimum, maximum) => {
     const value = Number(values[name] ?? fallback);
     if (!Number.isInteger(value) || value < minimum || value > maximum)
@@ -28,6 +39,8 @@ export function parseArgs(argv) {
   return {
     dryRun,
     identity: values.identity ? resolve(values.identity) : '',
+    handle: values.handle ?? 'MEGA_BOT',
+    expectedFingerprint: values['expected-fingerprint'] ?? '',
     outDir: values['out-dir'] ? resolve(values['out-dir']) : '',
     host: values.host ?? 'sshfighter.com',
     cooldownMs: numeric('cooldown-ms', 15_000, 5_000, 3_600_000),
@@ -69,7 +82,8 @@ export function spawnOneMatch(options, profile, sequence, dependencies = {}) {
   const spawnChild = dependencies.spawnChild ?? spawn;
   const runner = fileURLToPath(new URL('./static-router-quickmatch.mjs', import.meta.url));
   const output = resolve(options.outDir, ledgerName(profile, sequence, dependencies.now?.() ?? new Date()));
-  const args = [runner, '--armed', '--identity', options.identity, '--out', output,
+  const args = [runner, '--armed', '--identity', options.identity,
+    '--handle', options.handle, '--expected-fingerprint', options.expectedFingerprint, '--out', output,
     '--host', options.host, '--profile', profile.id];
   const child = spawnChild(process.execPath, args, { stdio: 'inherit' });
   return { child, output, args };
@@ -77,7 +91,11 @@ export function spawnOneMatch(options, profile, sequence, dependencies = {}) {
 
 export async function runSupervisor(options, dependencies = {}) {
   if (options.dryRun) {
-    return { ready: true, agent: 'MEGA', networkAccess: false, socketOpened: false, profiles: DURABLE_PROFILES };
+    return {
+      ready: true, agent: 'MEGA', handle: options.handle,
+      identityGateConfigured: Boolean(options.expectedFingerprint),
+      networkAccess: false, socketOpened: false, profiles: DURABLE_PROFILES,
+    };
   }
   mkdirSync(options.outDir, { recursive: true, mode: 0o700 });
   const lock = dependencies.acquireLock?.(options.outDir) ?? acquireSupervisorLock(options.outDir);

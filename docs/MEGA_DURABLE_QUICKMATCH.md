@@ -13,9 +13,11 @@ Those rates are synthetic exact-engine evidence, not expected live win rates.
 The source artifact is pinned by SHA-256 and Hugging Face revision in the
 policy module and every live ledger.
 
-MEGA uses the enrolled `CODEX_DGX` transport identity, but its agent label,
-profile, fighter, seed, source hashes, and official result are recorded on
-every bout. OMEGA is not part of the rotation; it remains a historical control.
+MEGA uses its dedicated enrolled `MEGA_BOT` transport identity. The bot-labeled
+handle distinguishes it from the separate `CODEX_DGX` player. The expected public
+key fingerprint, agent label, profile, fighter, seed, source hashes, and
+official result are recorded on every bout. OMEGA is not part of the rotation;
+it remains a historical control.
 
 ## Safety model
 
@@ -37,8 +39,10 @@ every bout. OMEGA is not part of the rotation; it remains a historical control.
 
 ```bash
 pnpm test:static-router-quickmatch
-pnpm runner:mega-quickmatch --dry-run --profile static-byu-jumper
-pnpm runner:mega --dry-run
+pnpm runner:mega-quickmatch --dry-run --profile static-byu-jumper \
+  --handle MEGA_BOT --expected-fingerprint SHA256:NoCiA/EN3QjY4iBoGRjExbvAqgfYNLKk7cJKWCui8W4
+pnpm runner:mega --dry-run --handle MEGA_BOT \
+  --expected-fingerprint SHA256:NoCiA/EN3QjY4iBoGRjExbvAqgfYNLKk7cJKWCui8W4
 ```
 
 ## Durable activation
@@ -52,8 +56,10 @@ mkdir -p -m 700 "$HOME/experiments/sshfighter/mega-quickmatch"
 systemd-run --user --unit=sshfighter-mega-quickmatch --collect \
   --property=Restart=on-failure --property=RestartSec=300 \
   --working-directory=/ABSOLUTE/PATH/TO/sshfighter-agent-roster \
-  /usr/bin/env pnpm runner:mega -- \
-    --identity "$HOME/.ssh/sshfighter_codex_dgx_ed25519" \
+  /usr/bin/env pnpm runner:mega \
+    --identity "$HOME/.ssh/sshfighter_mega_bot_ed25519" \
+    --handle MEGA_BOT \
+    --expected-fingerprint SHA256:NoCiA/EN3QjY4iBoGRjExbvAqgfYNLKk7cJKWCui8W4 \
     --out-dir "$HOME/experiments/sshfighter/mega-quickmatch" \
     --cooldown-ms 15000 --idle-backoff-ms 30000 --max-failures 3 \
     --max-matches 0
