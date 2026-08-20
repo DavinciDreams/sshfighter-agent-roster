@@ -50,7 +50,7 @@
       "oneMatchChild": "src/tools/static-router-quickmatch.mjs",
       "test": "test:static-router-quickmatch",
       "childRunnerSourceSha256": "5585b2fc593e93a532afd1de63df006458225dc7cea561aa6fd94bef54c95029",
-      "supervisorSourceSha256": "b74f36029d584df6eecb91cfac61aed9d8bdbbab35020ac638c129ed434e3ee6",
+      "supervisorSourceSha256": "19353a7e3f68a0a27f79466e139a6e593b3106f86fb2fd133257636e127ebab9",
       "policyModuleSha256": "79a73115877331c190841b83c03d53dbb6616dc90262a075d1a87b5c59db7674",
       "sharedTransportSha256": "af90aec6115fc109226e9ea07208324c4b2b98faa0d99b9619a89a2a9af47d69",
       "staticRouterWeightSha256": "ee1f5ffcb83b878bb02ce0c5b659f91a6b5b988ad971912972f9b0605b74ac4f",

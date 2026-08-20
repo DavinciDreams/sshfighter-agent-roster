@@ -19,7 +19,9 @@ every bout. OMEGA is not part of the rotation; it remains a historical control.
 
 ## Safety model
 
-- Exactly one process may queue at a time; MEGA never self-matches.
+- An exclusive mode-0600 supervisor lock enforces one MEGA process per output
+  directory; a stale lock fails closed and requires an operator to verify no
+  process remains before removal. MEGA never self-matches.
 - Public and authenticated queue telemetry must both be numeric integer zero.
 - The authenticated welcome must contain the exact ordered 17-fighter roster.
 - Every bout executes in a new one-match child and a new exclusive mode-0600

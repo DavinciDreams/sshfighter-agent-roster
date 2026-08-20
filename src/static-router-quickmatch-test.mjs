@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,7 @@ import {
   parseArgs as parseQuickArgs, run as runQuick, transientQueueError, validateOfficial,
 } from './tools/static-router-quickmatch.mjs';
 import {
-  parseArgs as parseSupervisorArgs, runSupervisor,
+  acquireSupervisorLock, parseArgs as parseSupervisorArgs, runSupervisor,
 } from './tools/durable-quickmatch-supervisor.mjs';
 
 let checks = 0;
@@ -110,6 +110,15 @@ await runQuick(dry); checks++;
 
 const supervisorDry = await runSupervisor(parseSupervisorArgs(['--dry-run']));
 check(supervisorDry.networkAccess === false && supervisorDry.profiles.length === 3, 'supervisor dry run is network free');
+
+const lockTemp = mkdtempSync(join(tmpdir(), 'static-router-lock-'));
+const firstLock = acquireSupervisorLock(lockTemp);
+check((statSync(firstLock.path).mode & 0o777) === 0o600, 'supervisor singleton lock is mode0600');
+assert.throws(() => acquireSupervisorLock(lockTemp), /EEXIST/); checks++;
+firstLock.release();
+check(!existsSync(firstLock.path), 'graceful supervisor release removes its owned lock');
+acquireSupervisorLock(lockTemp).release();
+rmSync(lockTemp, { recursive: true });
 
 class FakeChild extends EventEmitter { kill() { this.killed = true; return true; } }
 const exits = [0, 75, 0, 0];
