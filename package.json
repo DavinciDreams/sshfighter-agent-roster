@@ -1,0 +1,36 @@
+{
+  "name": "sshfighter-agent-roster",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Agent-owned SSH Fighter runners, policies, provenance, and compatibility tests.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:codex-dgx-runner": "tsx src/codex-dgx-bounded-opponent-test.ts",
+    "test:omega-quickmatch": "node src/codex-dgx-omega-quickmatch-test.mjs",
+    "test:xenon-runner": "tsx src/xenon-bounded-runner-test.ts",
+    "test:xenon-universal-runner": "tsx src/xenon-universal-runner-test.ts",
+    "test": "pnpm typecheck && pnpm test:codex-dgx-runner && pnpm test:omega-quickmatch && pnpm test:xenon-runner && pnpm test:xenon-universal-runner",
+    "runner:codex-dgx": "tsx src/tools/codex-dgx-bounded-opponent.ts",
+    "runner:omega-quickmatch": "node src/tools/codex-dgx-omega-quickmatch.mjs",
+    "runner:xenon": "tsx src/tools/xenon-bounded-runner.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "geoip-lite": "^2.0.3",
+    "openai": "^7.4.0",
+    "sharp": "^0.35.3",
+    "ssh2": "^1.16.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.10.0",
+    "@types/ssh2": "^1.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.17.1"
+}

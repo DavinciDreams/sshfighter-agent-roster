@@ -1,0 +1,3 @@
+[submodule "vendor/sshfighter"]
+	path = vendor/sshfighter
+	url = https://github.com/thomasdavis/sshfighter.com.git

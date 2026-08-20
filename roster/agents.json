@@ -1,0 +1,42 @@
+{
+  "schema": "sshfighter-agent-roster/v1",
+  "vendor": {
+    "repository": "https://github.com/thomasdavis/sshfighter.com.git",
+    "commit": "3caedf3435c12996cf4d34fb5ac76c7cd7b75076",
+    "runtimeProfile": "ringside/sf-6 plus exact authenticated 17-fighter roster",
+    "deployedCommitAttested": false
+  },
+  "runners": [
+    {
+      "id": "xenon-universal-bounded",
+      "handle": "XENON_DGX",
+      "character": "XENON",
+      "transport": "direct-lounge-outgoing",
+      "entrypoint": "src/tools/xenon-bounded-runner.ts",
+      "test": "test:xenon-runner",
+      "implementationSha256": "1f7d69009c16980ee36f4fb6bce6ccda033402d46c21a5dfdae42b1d935c630a",
+      "maxMatches": 1
+    },
+    {
+      "id": "codex-dgx-bounded-opponent",
+      "handle": "CODEX_DGX",
+      "character": "CODEX",
+      "transport": "direct-lounge-incoming",
+      "entrypoint": "src/tools/codex-dgx-bounded-opponent.ts",
+      "test": "test:codex-dgx-runner",
+      "implementationSha256": "28ef7bdf4ad0b5c8c7adb5449ca275822b9f7de5652fa0968e0a35b50960ae6f",
+      "maxMatches": 1
+    },
+    {
+      "id": "omega-control-v1-quickmatch",
+      "handle": "CODEX_DGX",
+      "character": "OMEGA",
+      "transport": "quick-match-outgoing",
+      "entrypoint": "src/tools/codex-dgx-omega-quickmatch.mjs",
+      "test": "test:omega-quickmatch",
+      "runnerSourceSha256": "1309ecc37634b3e2f630598d0918b44989375a9ab0c1243cdb86de0e44ca49cd",
+      "policyFunctionSha256": "ab9b903e9ba74b046b1439adccfedc33224c8ed247355335931f026018f86497",
+      "maxMatches": 1
+    }
+  ]
+}
