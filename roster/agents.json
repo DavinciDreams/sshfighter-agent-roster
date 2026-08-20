@@ -34,7 +34,7 @@
       "transport": "quick-match-outgoing",
       "entrypoint": "src/tools/codex-dgx-omega-quickmatch.mjs",
       "test": "test:omega-quickmatch",
-      "runnerSourceSha256": "fd2ee9e6e4775e05a3cf04f5e36e93ae5e47c7fc6b802d59cbef9e3b44af56e4",
+      "runnerSourceSha256": "1309ecc37634b3e2f630598d0918b44989375a9ab0c1243cdb86de0e44ca49cd",
       "policyFunctionSha256": "ab9b903e9ba74b046b1439adccfedc33224c8ed247355335931f026018f86497",
       "maxMatches": 1
     }

@@ -20,7 +20,15 @@ export const MIGRATED_FROM_UPSTREAM_PR_HEAD = 'aa72038b4aa2068ea9d295fcd2f8778f6
 export const VENDOR_SOURCE_COMMIT = '3caedf3435c12996cf4d34fb5ac76c7cd7b75076';
 export const RUNNER_SCHEMA = 'sshfighter-agent-roster/omega-quickmatch/v1';
 export const DEPLOYED_COMMIT_ATTESTED = false;
-export const RUNTIME_PROFILE_EVIDENCE = 'ringside/sf-6 health plus authenticated welcome roster containing OMEGA';
+export const RUNTIME_PROFILE_EVIDENCE = 'ringside/sf-6 health plus exact authenticated ordered 17-fighter welcome roster';
+export const PINNED_ROSTER = [
+  'BYU', 'MEN', 'BLANKO', 'CHONG', 'GYLE', 'ZANG', 'DHAL', 'HONDO',
+  'KIRA', 'MAKO', 'OMEGA', 'CODEX', 'FABLE', 'MNEME', 'AJAX', 'XENON', 'UNCLOSE',
+];
+export const CHILD_TERM_GRACE_MS = 250;
+export const CHILD_KILL_GRACE_MS = 1_000;
+export const CHILD_HARD_DEADLINE_MS = 1_500;
+export const GLOBAL_SESSION_TIMEOUT_MS = 10 * 60_000;
 export const VENDOR_IMPLEMENTATION_FILES = [
   'src/game/moves.ts',
   'src/game/engine.ts',
@@ -49,6 +57,69 @@ export function computeVendorImplementationHash() {
 
 export function computeRunnerSourceHash() {
   return createHash('sha256').update(readFileSync(fileURLToPath(import.meta.url))).digest('hex');
+}
+
+export function assertStrictQueueEmpty(payload, source = 'queue telemetry') {
+  const queued = payload?.queued;
+  if (typeof queued !== 'number' || !Number.isInteger(queued) || queued !== 0) {
+    throw new Error(`${source} must report queued as numeric integer zero; got ${String(queued)}`);
+  }
+  return payload;
+}
+
+export function validatePinnedRoster(value) {
+  if (!Array.isArray(value) || value.length !== PINNED_ROSTER.length
+      || value.some((entry, index) => entry !== PINNED_ROSTER[index])) {
+    throw new Error(`runtime profile mismatch: expected exact ordered ${PINNED_ROSTER.length}-fighter roster`);
+  }
+  return [...PINNED_ROSTER];
+}
+
+function secretField(key) {
+  const normalized = key.toLowerCase();
+  return normalized === 'fp' || normalized.endsWith('_fp') || normalized.includes('fingerprint')
+    || normalized.includes('token') || normalized.includes('identity')
+    || normalized === 'key' || normalized.endsWith('key') || normalized.startsWith('key_');
+}
+
+export function redactLedgerValue(value, key = '') {
+  if (secretField(key)) return '[REDACTED]';
+  if (Array.isArray(value)) return value.map((entry) => redactLedgerValue(entry));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([nestedKey, nestedValue]) => [
+      nestedKey, redactLedgerValue(nestedValue, nestedKey),
+    ]));
+  }
+  if (typeof value === 'string') {
+    return value
+      .replace(/SHA256:[A-Za-z0-9+/=]+/g, '[REDACTED]')
+      .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, '[REDACTED]');
+  }
+  return value;
+}
+
+export function createExclusiveLedger(outputPath, dependencies = {}) {
+  const open = dependencies.open ?? openSync;
+  const write = dependencies.write ?? writeSync;
+  const sync = dependencies.sync ?? fsyncSync;
+  const closeFd = dependencies.close ?? closeSync;
+  const now = dependencies.now ?? (() => new Date().toISOString());
+  const fd = open(outputPath, 'wx', 0o600);
+  let seq = 0;
+  let closed = false;
+  return {
+    append(kind, payload = {}) {
+      if (closed) return;
+      const safe = redactLedgerValue(payload);
+      write(fd, `${JSON.stringify({ seq: seq++, at: now(), kind, ...safe })}\n`);
+    },
+    close() {
+      if (closed) return;
+      sync(fd);
+      closeFd(fd);
+      closed = true;
+    },
+  };
 }
 
 export function verifyVendorProvenance(
@@ -203,21 +274,21 @@ export function createOneMatchController(options, io) {
     stopCause = cause;
     if (queueTimer !== null) io.cancel(queueTimer);
     send({ t: 'leave' }, cause);
+    io.onStop?.(cause);
   };
 
   async function handle(message) {
-    const loggedMessage = message.t === 'welcome' ? { ...message, fp: '[verified]' } : message;
-    io.append('inbound', { message: loggedMessage });
+    io.append('inbound', { message });
     if (message.t === 'welcome') {
       if (message.name !== HANDLE || message.fp !== EXPECTED_FINGERPRINT) {
         throw new Error(`identity mismatch: ${String(message.name)} / ${String(message.fp)}`);
       }
       io.append('identity_gate', { handle: message.name, fingerprint: message.fp });
-      roster = Array.isArray(message.roster) ? message.roster.map(String) : [];
+      roster = validatePinnedRoster(message.roster);
       const cursor = roster.indexOf(CHARACTER);
-      if (cursor < 0) throw new Error(`${CHARACTER} absent from runtime roster`);
       io.append('roster_gate', { cursor, rosterCount: roster.length });
-      await io.assertQueueSafe();
+      assertStrictQueueEmpty(await io.assertQueueSafe(), 'authenticated welcome queue gate');
+      if (stopping) return;
       queueTimer = io.schedule(() => {
         io.append('queue_window_expired', { windowMs: options.windowMs });
         stop('bounded_queue_window_expired');
@@ -249,6 +320,7 @@ export function createOneMatchController(options, io) {
     } else if (message.t === 'matchEnd' && matched && !stopping && !ending) {
       ending = true;
       const official = await io.fetchOfficial(matchId);
+      if (stopping) return;
       io.append('match_boundary', { matchId, clientResult: message.result ?? null, official });
       stop('one_match_complete');
     } else if (message.t === 'left') {
@@ -257,7 +329,126 @@ export function createOneMatchController(options, io) {
       throw new Error(`server error: ${message.msg}`);
     }
   }
-  return { handle, stop, status: () => ({ matchId, stopping, stopCause, ending, matched }) };
+  return {
+    handle,
+    stop,
+    dispose: () => { if (queueTimer !== null) io.cancel(queueTimer); },
+    status: () => ({ matchId, stopping, stopCause, ending, matched }),
+  };
+}
+
+export function createBoundedChildLifecycle(child, options = {}) {
+  const schedule = options.schedule ?? ((fn, ms) => setTimeout(fn, ms));
+  const cancel = options.cancel ?? ((timer) => clearTimeout(timer));
+  const append = options.append ?? (() => {});
+  const termMs = options.termMs ?? CHILD_TERM_GRACE_MS;
+  const killMs = options.killMs ?? CHILD_KILL_GRACE_MS;
+  const hardMs = options.hardMs ?? CHILD_HARD_DEADLINE_MS;
+  let closing = false;
+  let settled = false;
+  let outcomeError = null;
+  const timers = [];
+  let resolveDone;
+  let rejectDone;
+  const done = new Promise((resolvePromise, rejectPromise) => {
+    resolveDone = resolvePromise;
+    rejectDone = rejectPromise;
+  });
+  const clearTimers = () => { for (const timer of timers) cancel(timer); };
+  const settle = (error = outcomeError) => {
+    if (settled) return;
+    settled = true;
+    clearTimers();
+    if (error) rejectDone(error); else resolveDone();
+  };
+  const onExit = (code, signal) => {
+    append('transport_exit', { code, signal, expected: closing });
+    settle(closing ? outcomeError : new Error(`ssh exited before bounded completion: ${String(code)} / ${String(signal)}`));
+  };
+  const onError = (error) => {
+    append('transport_error', { error: String(error), expected: closing });
+    settle(closing && !outcomeError ? null : (outcomeError ?? error));
+  };
+  child.once('exit', onExit);
+  child.once('error', onError);
+
+  const close = (cause, error = null) => {
+    if (closing || settled) return;
+    closing = true;
+    outcomeError = error;
+    append('transport_close', { cause, success: !error });
+    if (!child.stdin?.destroyed) child.stdin?.end?.();
+    if (settled) return;
+    timers.push(schedule(() => {
+      append('transport_signal', { signal: 'SIGTERM' });
+      child.kill?.('SIGTERM');
+    }, termMs));
+    timers.push(schedule(() => {
+      append('transport_signal', { signal: 'SIGKILL' });
+      child.kill?.('SIGKILL');
+    }, killMs));
+    timers.push(schedule(() => {
+      append('transport_hard_deadline', { hardMs });
+      settle();
+    }, hardMs));
+  };
+  return { close, done, status: () => ({ closing, settled }) };
+}
+
+export function createBoundedTransportSession(options, io) {
+  const schedule = io.schedule ?? ((fn, ms) => setTimeout(fn, ms));
+  const cancel = io.cancel ?? ((timer) => clearTimeout(timer));
+  const lifecycle = createBoundedChildLifecycle(io.child, {
+    schedule, cancel, append: io.append,
+    termMs: options.termMs, killMs: options.killMs, hardMs: options.hardMs,
+  });
+  let completed = false;
+  let controller;
+  const controllerIo = {
+    send: io.send,
+    append: io.append,
+    schedule,
+    cancel,
+    assertQueueSafe: io.assertQueueSafe,
+    fetchOfficial: io.fetchOfficial,
+    onStop: (cause) => lifecycle.close(
+      cause,
+      cause === 'one_match_complete' ? null : new Error(`bounded session stopped: ${cause}`),
+    ),
+    finish: (summary) => {
+      if (completed) return;
+      completed = true;
+      io.append('complete', summary);
+      lifecycle.close('server_left', summary.matched && summary.reason === 'one_match_complete'
+        ? null : new Error(`server left before bounded match completion: ${summary.reason}`));
+    },
+  };
+  controller = createOneMatchController({ windowMs: options.windowMs }, controllerIo);
+  const globalTimer = schedule(() => controller.stop('global_timeout'),
+    options.globalTimeoutMs ?? GLOBAL_SESSION_TIMEOUT_MS);
+  const signalHandler = () => controller.stop('operator_sigint');
+  io.addSignal?.(signalHandler);
+
+  const dispatch = async (message) => {
+    try {
+      await controller.handle(message);
+    } catch (error) {
+      io.append('fatal', { error: String(error) });
+      controller.stop('fatal');
+    }
+  };
+  const acceptLine = (raw) => {
+    const line = String(raw).trim();
+    if (!line.startsWith('{')) return Promise.resolve();
+    try { return dispatch(JSON.parse(line)); }
+    catch (error) { return dispatch({ t: 'error', msg: `invalid JSON: ${String(error)}` }); }
+  };
+  const done = lifecycle.done.finally(() => {
+    cancel(globalTimer);
+    controller.dispose();
+    io.removeSignal?.(signalHandler);
+  });
+  return { controller, dispatch, acceptLine, done, lifecycle };
 }
 
 async function fetchJson(url) {
@@ -266,7 +457,7 @@ async function fetchJson(url) {
   return response.json();
 }
 
-async function run(args) {
+export async function run(args) {
   const first = deterministicFixture();
   const second = deterministicFixture();
   if (JSON.stringify(first) !== JSON.stringify(second)) throw new Error('policy determinism check failed');
@@ -295,14 +486,11 @@ async function run(args) {
     fetchJson(`https://${args.host}/api/health`), fetchJson(`https://${args.host}/api/live`),
   ]);
   if (health.engine !== 'sf-6') throw new Error('runtime engine profile gate failed');
-  if (Number(live.queued) !== 0) throw new Error(`global queue is not empty: ${live.queued}`);
+  assertStrictQueueEmpty(live, 'public preflight');
 
   mkdirSync(dirname(outputPath), { recursive: true });
-  const fd = openSync(outputPath, 'wx', 0o600);
-  let seq = 0;
-  let closed = false;
-  const append = (kind, payload = {}) => writeSync(fd, `${JSON.stringify({ seq: seq++, at: new Date().toISOString(), kind, ...payload })}\n`);
-  const closeLog = () => { if (!closed) { fsyncSync(fd); closeSync(fd); closed = true; } };
+  const ledger = createExclusiveLedger(outputPath);
+  const append = (kind, payload = {}) => ledger.append(kind, payload);
   append('session', {
     schema: RUNNER_SCHEMA, armed: true, handle: HANDLE, character: CHARACTER,
     expectedFingerprint: EXPECTED_FINGERPRINT, policy: POLICY, policySeed: POLICY_SEED,
@@ -315,15 +503,16 @@ async function run(args) {
 
   const ssh = spawn('ssh', ['-T', '-i', resolve(args.identity), '-o', 'IdentitiesOnly=yes', `${HANDLE}@${args.host}`, 'play'], { stdio: ['pipe', 'pipe', 'inherit'] });
   const lines = readline.createInterface({ input: ssh.stdout });
-  let finished = false;
   const send = (message) => { if (!ssh.stdin.destroyed) ssh.stdin.write(`${JSON.stringify(message)}\n`); };
-  const controller = createOneMatchController({ windowMs: args.windowMs }, {
-    send, append,
+  const session = createBoundedTransportSession({ windowMs: args.windowMs }, {
+    child: ssh, send, append,
     schedule: (fn, ms) => setTimeout(fn, ms), cancel: (timer) => clearTimeout(timer),
+    addSignal: (handler) => process.once('SIGINT', handler),
+    removeSignal: (handler) => process.off('SIGINT', handler),
     assertQueueSafe: async () => {
       const latest = await fetchJson(`https://${args.host}/api/live`);
       append('queue_gate', { live: latest });
-      if (Number(latest.queued) !== 0) throw new Error(`global queue changed before join: ${latest.queued}`);
+      return latest;
     },
     fetchOfficial: async (matchId) => {
       for (let attempt = 1; attempt <= 12; attempt++) {
@@ -331,20 +520,12 @@ async function run(args) {
         catch (error) { if (attempt === 12) return { unavailable: true, error: String(error) }; await new Promise((ok) => setTimeout(ok, attempt * 250)); }
       }
     },
-    finish: (summary) => { if (finished) return; finished = true; append('complete', summary); closeLog(); ssh.stdin.end(); },
   });
-  lines.on('line', (raw) => {
-    const line = raw.trim(); if (!line.startsWith('{')) return;
-    try { void controller.handle(JSON.parse(line)).catch((error) => { append('fatal', { error: String(error) }); controller.stop('fatal'); }); }
-    catch (error) { append('fatal', { error: String(error) }); controller.stop('fatal'); }
-  });
-  process.once('SIGINT', () => controller.stop('operator_sigint'));
-  await new Promise((resolvePromise, rejectPromise) => {
-    ssh.once('error', rejectPromise);
-    ssh.once('exit', (code) => code === 0 || finished ? resolvePromise() : rejectPromise(new Error(`ssh exited ${code}`)));
-  }).finally(() => { lines.close(); closeLog(); });
+  lines.on('line', (raw) => { void session.acceptLine(raw); });
+  try { await session.done; }
+  finally { lines.close(); ledger.close(); }
   console.log(JSON.stringify({
-    ...controller.status(), log: outputPath,
+    ...session.controller.status(), log: outputPath,
     sha256: createHash('sha256').update(readFileSync(outputPath)).digest('hex'),
   }, null, 2));
 }
