@@ -19,6 +19,7 @@ import {
 import {
   acquireSupervisorLock, parseArgs as parseSupervisorArgs, runSupervisor,
 } from './tools/durable-quickmatch-supervisor.mjs';
+import { summarizeLiveLedger } from './live-eval-metrics.mjs';
 
 let checks = 0;
 const check = (condition, message) => { assert(condition, message); checks++; };
@@ -76,10 +77,19 @@ check(parseQuickArgs(['--dry-run', '--profile', 'static-gyle-jumper']).profile.c
 const megaArgs = parseQuickArgs([
   '--armed', '--identity', '/fake/mega', '--handle', 'MEGA_BOT',
   '--expected-fingerprint', 'SHA256:abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
+  '--expected-opponent', 'DECLARED_TARGET', '--expected-opponent-character', 'BYU',
   '--out', '/tmp/mega.jsonl',
 ]);
 check(megaArgs.handle === 'MEGA_BOT' && megaArgs.expectedFingerprint.startsWith('SHA256:'),
   'armed quick args require an explicit identity binding');
+check(megaArgs.expectedOpponent === 'DECLARED_TARGET' && megaArgs.expectedOpponentCharacter === 'BYU',
+  'quick args bind declared opponent and character guards');
+assert.throws(() => parseQuickArgs([
+  '--dry-run', '--expected-opponent', 'DECLARED_TARGET',
+]), /provided together/); checks++;
+assert.throws(() => parseQuickArgs([
+  '--dry-run', '--expected-opponent', 'DECLARED_TARGET', '--expected-opponent-character', 'TYPO',
+]), /pinned roster/); checks++;
 assert.throws(() => parseQuickArgs([
   '--armed', '--identity', '/fake/mega', '--handle', 'mega bot',
   '--expected-fingerprint', 'SHA256:abc', '--out', '/tmp/mega.jsonl',
@@ -108,15 +118,53 @@ await controller.handle({ t: 'state', frame: 2, ack: 0, ...fixture });
 check(sent.length === 2 && rows.some((row) => row.kind === 'input_suppressed'), 'MEGA emits nothing behind an unacked input');
 await controller.handle({ t: 'state', frame: 3, ack: 1, ...fixture });
 check(sent.length === 3, 'MEGA resumes only after authoritative ack');
+const transportSummary = summarizeLiveLedger(rows);
+check(transportSummary.transport.stateMessages === 3
+  && transportSummary.transport.acknowledgedInputs === 1,
+'transport summary binds state and first-observed ACK samples');
+check(transportSummary.decision.count === 2
+  && transportSummary.decision.maxMs >= 0,
+'transport summary reports measured decision duration');
+check(rows.filter((row) => row.kind === 'decision').every((row) => Number.isInteger(row.inputSeq)),
+'decisions bind local input sequence');
 const wrong = createOneMatchController({ windowMs: 5000, character: 'MNEME' }, {
   send: () => {}, append: () => {}, schedule: () => 1, cancel: () => {},
   assertQueueSafe: async () => ({ queued: 0 }), fetchOfficial: async () => ({}), finish: () => {},
 });
 await wrong.handle({ t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER] });
 check(await rejects(wrong.handle({ t: 'queued', char: 'BYU' }), /queued wrong character/), 'wrong queued character rejects');
+const wrongOpponent = createOneMatchController({
+  windowMs: 5000, character: 'MNEME', expectedOpponent: 'DECLARED_TARGET',
+  expectedOpponentCharacter: 'BYU',
+}, {
+  send: () => {}, append: () => {}, schedule: () => 1, cancel: () => {},
+  assertQueueSafe: async () => ({ queued: 0 }), fetchOfficial: async () => ({}), finish: () => {},
+});
+await wrongOpponent.handle({ t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER] });
+check(await rejects(wrongOpponent.handle({
+  t: 'matchStart', mid: 'wrong-target', yourCursor: PINNED_ROSTER.indexOf('MNEME'),
+  oppCursor: 0, role: 'a', stage: 'dojo', oppName: 'RANDOM_OPPONENT',
+}), /unexpected opponent/), 'declared target mismatch fails before combat input');
+const wrongOpponentCharacter = createOneMatchController({
+  windowMs: 5000, character: 'MNEME', expectedOpponent: 'DECLARED_TARGET',
+  expectedOpponentCharacter: 'GYLE',
+}, {
+  send: () => {}, append: () => {}, schedule: () => 1, cancel: () => {},
+  assertQueueSafe: async () => ({ queued: 0 }), fetchOfficial: async () => ({}), finish: () => {},
+});
+await wrongOpponentCharacter.handle({
+  t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER],
+});
+check(await rejects(wrongOpponentCharacter.handle({
+  t: 'matchStart', mid: 'wrong-character', yourCursor: PINNED_ROSTER.indexOf('MNEME'),
+  oppCursor: PINNED_ROSTER.indexOf('BYU'), role: 'a', stage: 'dojo', oppName: 'DECLARED_TARGET',
+}), /unexpected opponent character/), 'declared opponent character mismatch fails before combat input');
 
 const official = { match: { id: 'm1', mode: 'versus', engine_version: 'sf-6', a_name: HANDLE, a_char: 'BYU', b_name: 'OPP', b_char: 'XENON', winner: 'a', a_rounds: 2, b_rounds: 1, end_reason: 'ko' } };
 check(validateOfficial(official, 'm1', 'BYU', HANDLE) === official, 'official completion validates explicit generic handle');
+assert.throws(() => validateOfficial(official, 'm1', 'BYU', HANDLE, {
+  handle: 'WRONG_TARGET', character: 'XENON',
+}), /official opponent mismatch/); checks++;
 assert.throws(() => validateOfficial({ match: { ...official.match, a_char: 'GYLE' } }, 'm1', 'BYU', HANDLE), /clean uniquely bound/); checks++;
 const megaOfficial = { match: { ...official.match, a_name: 'MEGA_BOT' } };
 check(validateOfficial(megaOfficial, 'm1', 'BYU') === megaOfficial,
