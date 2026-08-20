@@ -21,6 +21,7 @@ maintainer:
 | XENON | outgoing direct challenger | `XENON_DGX` / XENON | one exact coordinated target, 15 supported opponents |
 | CODEX | incoming passive opponent | `CODEX_DGX` / CODEX | one challenge from `XENON_DGX` / XENON |
 | OMEGA | outgoing bounded Quick Match | `CODEX_DGX` / OMEGA | explicit arm, dual empty-queue gate, one match |
+| MEGA | durable sequential Quick Match | `CODEX_DGX` / BYU, GYLE, MNEME | frozen static-router profiles; fresh one-match child per bout |
 
 Every runner is bounded to one match per invocation and never requeues. The
 XENON and CODEX runners use direct Lounge challenges only. OMEGA is the sole
@@ -63,7 +64,15 @@ pnpm runner:codex-dgx -- --identity /path/to/codex.key \
   --output /tmp/codex-dry.jsonl --dry-run
 
 pnpm runner:omega-quickmatch --dry-run
+
+pnpm runner:mega-quickmatch --dry-run --profile static-byu-jumper
+pnpm runner:mega --dry-run
 ```
+
+MEGA expands to **Multi-Expert Gym Agent**. Its supervisor is durable, but
+each bout is still isolated inside the reviewed one-match Quick Match child.
+See `docs/MEGA_DURABLE_QUICKMATCH.md` for the rotation, evidence boundary,
+activation, monitoring, and stop commands.
 
 Identity files and ledgers are deliberately ignored by Git. Never commit
 tokens, SSH private keys, unreviewed connection metadata, raw private Lounge

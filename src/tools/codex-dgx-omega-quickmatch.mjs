@@ -260,6 +260,11 @@ export function deterministicFixture() {
 }
 
 export function createOneMatchController(options, io) {
+  const handleName = options.handle ?? HANDLE;
+  const character = options.character ?? CHARACTER;
+  const expectedFingerprint = options.expectedFingerprint ?? EXPECTED_FINGERPRINT;
+  const decidePolicy = options.decide ?? decide;
+  const resetPolicy = options.reset ?? resetRng;
   let matchId = '';
   let stopping = false;
   let stopCause = '';
@@ -267,6 +272,8 @@ export function createOneMatchController(options, io) {
   let matched = false;
   let queueTimer = null;
   let roster = [];
+  let localInputSeq = 0;
+  let lastInputAck = 0;
   const send = (message, cause) => { io.append('outbound', { cause, message }); io.send(message); };
   const stop = (cause) => {
     if (stopping) return;
@@ -280,12 +287,12 @@ export function createOneMatchController(options, io) {
   async function handle(message) {
     io.append('inbound', { message });
     if (message.t === 'welcome') {
-      if (message.name !== HANDLE || message.fp !== EXPECTED_FINGERPRINT) {
+      if (message.name !== handleName || message.fp !== expectedFingerprint) {
         throw new Error(`identity mismatch: ${String(message.name)} / ${String(message.fp)}`);
       }
       io.append('identity_gate', { handle: message.name, fingerprint: message.fp });
       roster = validatePinnedRoster(message.roster);
-      const cursor = roster.indexOf(CHARACTER);
+      const cursor = roster.indexOf(character);
       io.append('roster_gate', { cursor, rosterCount: roster.length });
       assertStrictQueueEmpty(await io.assertQueueSafe(), 'authenticated welcome queue gate');
       if (stopping) return;
@@ -293,30 +300,43 @@ export function createOneMatchController(options, io) {
         io.append('queue_window_expired', { windowMs: options.windowMs });
         stop('bounded_queue_window_expired');
       }, options.windowMs);
-      send({ t: 'queue', char: CHARACTER }, 'welcome_zero_queue_preflight');
+      send({ t: 'queue', char: character }, 'welcome_zero_queue_preflight');
     } else if (message.t === 'queued') {
-      if (message.char !== CHARACTER) throw new Error(`queued wrong character: ${message.char}`);
+      if (message.char !== character) throw new Error(`queued wrong character: ${message.char}`);
     } else if (message.t === 'matchStart') {
       if (matched) throw new Error('second matchStart rejected');
       matched = true;
       if (queueTimer !== null) io.cancel(queueTimer);
       const ownCharacter = roster[Number(message.yourCursor)] ?? 'UNKNOWN';
-      if (ownCharacter !== CHARACTER) throw new Error(`matchStart character mismatch: ${ownCharacter}`);
+      if (ownCharacter !== character) throw new Error(`matchStart character mismatch: ${ownCharacter}`);
       matchId = String(message.mid ?? '');
       if (!matchId) throw new Error('matchStart missing match id');
-      resetRng();
+      resetPolicy();
+      localInputSeq = 0;
+      lastInputAck = 0;
       io.append('match_start', {
         matchId, role: message.role, stage: message.stage, ownCharacter,
         opponent: message.oppName, opponentCharacter: roster[Number(message.oppCursor)] ?? 'UNKNOWN',
       });
     } else if (message.t === 'state' && matched && !stopping && !ending) {
-      const rngBefore = rngState;
-      const result = decide(message);
+      const ack = Number(message.ack ?? 0);
+      if (!Number.isInteger(ack) || ack < lastInputAck || ack > localInputSeq)
+        throw new Error(`invalid input ack progression ${lastInputAck}->${String(message.ack)}/${localInputSeq}`);
+      lastInputAck = ack;
+      if (options.requireAckBeforeNextInput && ack < localInputSeq) {
+        io.append('input_suppressed', {
+          matchId, frame: message.frame, reason: 'prior-input-unacked', ack, localInputSeq,
+        });
+        return;
+      }
+      const rngBefore = options.rngState?.() ?? rngState;
+      const result = decidePolicy(message);
       io.append('decision', {
         matchId, frame: message.frame, ack: message.ack ?? null,
-        rngBefore, rngAfter: rngState, reason: result.reason, action: result.action,
+        rngBefore, rngAfter: options.rngState?.() ?? rngState, reason: result.reason, action: result.action,
       });
       send(result.action, 'state_decision');
+      localInputSeq++;
     } else if (message.t === 'matchEnd' && matched && !stopping && !ending) {
       ending = true;
       const official = await io.fetchOfficial(matchId);
@@ -333,7 +353,7 @@ export function createOneMatchController(options, io) {
     handle,
     stop,
     dispose: () => { if (queueTimer !== null) io.cancel(queueTimer); },
-    status: () => ({ matchId, stopping, stopCause, ending, matched }),
+    status: () => ({ matchId, stopping, stopCause, ending, matched, localInputSeq, lastInputAck }),
   };
 }
 
@@ -423,7 +443,7 @@ export function createBoundedTransportSession(options, io) {
         ? null : new Error(`server left before bounded match completion: ${summary.reason}`));
     },
   };
-  controller = createOneMatchController({ windowMs: options.windowMs }, controllerIo);
+  controller = createOneMatchController(options, controllerIo);
   const globalTimer = schedule(() => controller.stop('global_timeout'),
     options.globalTimeoutMs ?? GLOBAL_SESSION_TIMEOUT_MS);
   const signalHandler = () => controller.stop('operator_sigint');
