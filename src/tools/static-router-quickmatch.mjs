@@ -19,7 +19,7 @@ import {
 
 export const RUNNER_SCHEMA = 'sshfighter-agent-roster/mega-quickmatch/v1';
 export const SOURCE_FILE = fileURLToPath(import.meta.url);
-export const DEFAULT_HANDLE = 'MEGA';
+export const DEFAULT_HANDLE = 'MEGA_BOT';
 
 export function parseArgs(argv) {
   const values = {};

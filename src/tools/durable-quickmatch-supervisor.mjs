@@ -39,7 +39,7 @@ export function parseArgs(argv) {
   return {
     dryRun,
     identity: values.identity ? resolve(values.identity) : '',
-    handle: values.handle ?? 'MEGA',
+    handle: values.handle ?? 'MEGA_BOT',
     expectedFingerprint: values['expected-fingerprint'] ?? '',
     outDir: values['out-dir'] ? resolve(values['out-dir']) : '',
     host: values.host ?? 'sshfighter.com',

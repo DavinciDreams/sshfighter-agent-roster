@@ -14,7 +14,7 @@ import {
   createStaticGymPolicy, staticProfile,
 } from './policies/static-router-gym.mjs';
 import {
-  parseArgs as parseQuickArgs, run as runQuick, transientQueueError, validateOfficial,
+  DEFAULT_HANDLE, parseArgs as parseQuickArgs, run as runQuick, transientQueueError, validateOfficial,
 } from './tools/static-router-quickmatch.mjs';
 import {
   acquireSupervisorLock, parseArgs as parseSupervisorArgs, runSupervisor,
@@ -41,6 +41,9 @@ const megaCatalog = catalog.runners.find((row) => row.agent === 'MEGA');
 const sharedTransportHash = sha256File(resolve(sourceRoot, 'tools/codex-dgx-omega-quickmatch.mjs'));
 check(omegaCatalog?.runnerSourceSha256 === sharedTransportHash, 'OMEGA catalog pins shared transport bytes');
 check(megaCatalog?.sharedTransportSha256 === sharedTransportHash, 'MEGA catalog pins shared transport bytes');
+check(megaCatalog?.handle === 'MEGA_BOT'
+  && megaCatalog?.expectedFingerprint === 'SHA256:NoCiA/EN3QjY4iBoGRjExbvAqgfYNLKk7cJKWCui8W4'
+  && DEFAULT_HANDLE === 'MEGA_BOT', 'MEGA catalog and runner pin the dedicated bot identity');
 check(megaCatalog?.childRunnerSourceSha256 === sha256File(resolve(sourceRoot, 'tools/static-router-quickmatch.mjs')),
   'MEGA catalog pins child bytes');
 check(megaCatalog?.supervisorSourceSha256 === sha256File(resolve(sourceRoot, 'tools/durable-quickmatch-supervisor.mjs')),
@@ -112,18 +115,19 @@ const wrong = createOneMatchController({ windowMs: 5000, character: 'MNEME' }, {
 await wrong.handle({ t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER] });
 check(await rejects(wrong.handle({ t: 'queued', char: 'BYU' }), /queued wrong character/), 'wrong queued character rejects');
 
-const official = { match: { id: 'm1', mode: 'versus', engine_version: 'sf-6', a_name: 'MEGA', a_char: 'BYU', b_name: 'OPP', b_char: 'XENON', winner: 'a', a_rounds: 2, b_rounds: 1, end_reason: 'ko' } };
-check(validateOfficial(official, 'm1', 'BYU') === official, 'official completion validates');
-assert.throws(() => validateOfficial({ match: { ...official.match, a_char: 'GYLE' } }, 'm1', 'BYU'), /clean uniquely bound/); checks++;
-const megaOfficial = { match: { ...official.match, a_name: 'MEGA' } };
-check(validateOfficial(megaOfficial, 'm1', 'BYU', 'MEGA') === megaOfficial,
-  'official completion binds the configured handle');
+const official = { match: { id: 'm1', mode: 'versus', engine_version: 'sf-6', a_name: HANDLE, a_char: 'BYU', b_name: 'OPP', b_char: 'XENON', winner: 'a', a_rounds: 2, b_rounds: 1, end_reason: 'ko' } };
+check(validateOfficial(official, 'm1', 'BYU', HANDLE) === official, 'official completion validates explicit generic handle');
+assert.throws(() => validateOfficial({ match: { ...official.match, a_char: 'GYLE' } }, 'm1', 'BYU', HANDLE), /clean uniquely bound/); checks++;
+const megaOfficial = { match: { ...official.match, a_name: 'MEGA_BOT' } };
+check(validateOfficial(megaOfficial, 'm1', 'BYU') === megaOfficial,
+  'official completion defaults to the dedicated MEGA_BOT handle');
 
 const dry = parseQuickArgs(['--dry-run', '--profile', 'static-byu-jumper']);
 await runQuick(dry); checks++;
 
 const supervisorDry = await runSupervisor(parseSupervisorArgs(['--dry-run']));
-check(supervisorDry.networkAccess === false && supervisorDry.profiles.length === 3, 'supervisor dry run is network free');
+check(supervisorDry.networkAccess === false && supervisorDry.profiles.length === 3
+  && supervisorDry.handle === 'MEGA_BOT', 'supervisor dry run is network free and bot-identity bound');
 
 const lockTemp = mkdtempSync(join(tmpdir(), 'static-router-lock-'));
 const firstLock = acquireSupervisorLock(lockTemp);
