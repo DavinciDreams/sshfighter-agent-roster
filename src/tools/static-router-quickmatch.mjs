@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
 import {
-  EXPECTED_FINGERPRINT, HANDLE, PINNED_ROSTER, RUNNER_SCHEMA as CONTROL_SCHEMA,
+  PINNED_ROSTER, RUNNER_SCHEMA as CONTROL_SCHEMA,
   assertStrictQueueEmpty, createBoundedTransportSession, createExclusiveLedger,
   validatePinnedRoster, verifyVendorProvenance,
 } from './codex-dgx-omega-quickmatch.mjs';
@@ -19,11 +19,14 @@ import {
 
 export const RUNNER_SCHEMA = 'sshfighter-agent-roster/mega-quickmatch/v1';
 export const SOURCE_FILE = fileURLToPath(import.meta.url);
+export const DEFAULT_HANDLE = 'MEGA';
 
 export function parseArgs(argv) {
   const values = {};
   let armed = false, dryRun = false;
-  const allowed = new Set(['identity', 'out', 'host', 'window-ms', 'profile', 'seed']);
+  const allowed = new Set([
+    'identity', 'handle', 'expected-fingerprint', 'out', 'host', 'window-ms', 'profile', 'seed',
+  ]);
   for (let index = 0; index < argv.length; index++) {
     const raw = argv[index];
     if (raw === '--armed') { armed = true; continue; }
@@ -40,8 +43,21 @@ export function parseArgs(argv) {
   if (!Number.isInteger(windowMs) || windowMs < 5_000 || windowMs > 120_000)
     throw new Error('--window-ms must be an integer from 5000 to 120000');
   if (!Number.isInteger(seed)) throw new Error('--seed must be an integer');
-  if (armed && (!values.identity || !values.out)) throw new Error('--armed requires --identity and --out');
-  return { armed, dryRun, profile, identity: values.identity, out: values.out, host: values.host ?? 'sshfighter.com', windowMs, seed };
+  if (armed && (!values.identity || !values.handle || !values['expected-fingerprint'] || !values.out)) {
+    throw new Error('--armed requires --identity, --handle, --expected-fingerprint, and --out');
+  }
+  if (values.handle && !/^[A-Z0-9_-]{3,12}$/.test(values.handle)) {
+    throw new Error('--handle must be 3-12 uppercase letters, numbers, underscores, or hyphens');
+  }
+  if (values['expected-fingerprint'] && !/^SHA256:[A-Za-z0-9+/=]+$/.test(values['expected-fingerprint'])) {
+    throw new Error('--expected-fingerprint must be an SHA256 SSH fingerprint');
+  }
+  return {
+    armed, dryRun, profile, identity: values.identity,
+    handle: values.handle ?? DEFAULT_HANDLE,
+    expectedFingerprint: values['expected-fingerprint'] ?? '',
+    out: values.out, host: values.host ?? 'sshfighter.com', windowMs, seed,
+  };
 }
 
 async function fetchJson(url) {
@@ -68,12 +84,12 @@ function runnerProvenance() {
   };
 }
 
-export function validateOfficial(payload, mid, character) {
+export function validateOfficial(payload, mid, character, handle = DEFAULT_HANDLE) {
   const match = payload?.match;
   if (!match || match.id !== mid || match.mode !== 'versus' || match.engine_version !== 'sf-6')
     throw new Error('official result identity, mode, or engine mismatch');
-  const ownA = match.a_name === HANDLE && match.a_char === character;
-  const ownB = match.b_name === HANDLE && match.b_char === character;
+  const ownA = match.a_name === handle && match.a_char === character;
+  const ownB = match.b_name === handle && match.b_char === character;
   if (ownA === ownB || !['ko', 'time'].includes(match.end_reason)
       || !['a', 'b'].includes(match.winner)
       || !Number.isInteger(match.a_rounds) || !Number.isInteger(match.b_rounds))
@@ -90,7 +106,7 @@ export async function run(args) {
     agent: 'MEGA',
     expansion: 'Multi-Expert Gym Agent',
     sharedBoundedTransportSchema: CONTROL_SCHEMA,
-    handle: HANDLE,
+    handle: args.handle,
     character: args.profile.character,
     profile: args.profile,
     policySeed: args.seed,
@@ -126,7 +142,7 @@ export async function run(args) {
     '-T', '-i', resolve(args.identity), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
     '-o', 'NumberOfPasswordPrompts=0', '-o', 'ConnectTimeout=10',
     '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=3',
-    `${HANDLE}@${args.host}`, 'play',
+    `${args.handle}@${args.host}`, 'play',
   ], { stdio: ['pipe', 'pipe', 'inherit'] });
   const lines = readline.createInterface({ input: ssh.stdout });
   const send = (message) => { if (!ssh.stdin.destroyed) ssh.stdin.write(`${JSON.stringify(message)}\n`); };
@@ -134,8 +150,8 @@ export async function run(args) {
   const session = createBoundedTransportSession({
     windowMs: args.windowMs,
     character: args.profile.character,
-    handle: HANDLE,
-    expectedFingerprint: EXPECTED_FINGERPRINT,
+    handle: args.handle,
+    expectedFingerprint: args.expectedFingerprint,
     decide: policy.decide,
     reset: policy.reset,
     rngState: policy.rngState,
@@ -153,7 +169,12 @@ export async function run(args) {
     fetchOfficial: async (mid) => {
       currentMid = mid;
       for (let attempt = 1; attempt <= 12; attempt++) {
-        try { return validateOfficial(await fetchJson(`https://${args.host}/api/matches/${encodeURIComponent(mid)}`), mid, args.profile.character); }
+        try {
+          return validateOfficial(
+            await fetchJson(`https://${args.host}/api/matches/${encodeURIComponent(mid)}`),
+            mid, args.profile.character, args.handle,
+          );
+        }
         catch (error) {
           if (attempt === 12) throw error;
           await new Promise((resolveWait) => setTimeout(resolveWait, attempt * 250));

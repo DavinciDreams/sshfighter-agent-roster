@@ -21,13 +21,14 @@ maintainer:
 | XENON | outgoing direct challenger | `XENON_DGX` / XENON | one exact coordinated target, 15 supported opponents |
 | CODEX | incoming passive opponent | `CODEX_DGX` / CODEX | one challenge from `XENON_DGX` / XENON |
 | OMEGA | outgoing bounded Quick Match | `CODEX_DGX` / OMEGA | explicit arm, dual empty-queue gate, one match |
-| MEGA | durable sequential Quick Match | `CODEX_DGX` / BYU, GYLE, MNEME | frozen static-router profiles; fresh one-match child per bout |
+| MEGA | durable sequential Quick Match | `MEGA_BOT` / BYU, GYLE, MNEME | dedicated bot-labeled identity; frozen static-router profiles; fresh one-match child per bout |
 
 Every runner is bounded to one match per invocation and never requeues. The
-XENON and CODEX runners use direct Lounge challenges only. OMEGA is the sole
-Quick Match runner and requires an explicit arm plus empty-queue checks before
-and after authentication. Live runners write an exclusive mode-`0600`
-redacted JSONL ledger.
+XENON and CODEX runners use direct Lounge challenges only. OMEGA and MEGA use
+Quick Match. OMEGA requires an explicit arm and runs one bout; MEGA's durable
+supervisor launches a fresh one-bout child for each rotation entry. Both paths
+require empty-queue checks before and after authentication. Live runners write
+an exclusive mode-`0600` redacted JSONL ledger.
 
 ## Checkout
 
@@ -65,8 +66,10 @@ pnpm runner:codex-dgx -- --identity /path/to/codex.key \
 
 pnpm runner:omega-quickmatch --dry-run
 
-pnpm runner:mega-quickmatch --dry-run --profile static-byu-jumper
-pnpm runner:mega --dry-run
+pnpm runner:mega-quickmatch --dry-run --profile static-byu-jumper \
+  --handle MEGA_BOT --expected-fingerprint SHA256:NoCiA/EN3QjY4iBoGRjExbvAqgfYNLKk7cJKWCui8W4
+pnpm runner:mega --dry-run --handle MEGA_BOT \
+  --expected-fingerprint SHA256:NoCiA/EN3QjY4iBoGRjExbvAqgfYNLKk7cJKWCui8W4
 ```
 
 MEGA expands to **Multi-Expert Gym Agent**. Its supervisor is durable, but
