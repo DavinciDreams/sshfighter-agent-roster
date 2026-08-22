@@ -51,6 +51,12 @@ check(megaCatalog?.supervisorSourceSha256 === sha256File(resolve(sourceRoot, 'to
   'MEGA catalog pins supervisor bytes');
 check(megaCatalog?.policyModuleSha256 === sha256File(resolve(sourceRoot, 'policies/static-router-gym.mjs')),
   'MEGA catalog pins policy bytes');
+check(megaCatalog?.innovationPolicyModuleSha256
+  === sha256File(resolve(sourceRoot, 'policies/mega-innovation-router.mjs')),
+  'MEGA catalog pins optional innovation policy bytes');
+check(megaCatalog?.defaultPolicyMode === 'static'
+  && megaCatalog?.experimentalPolicyModes?.join(',') === 'innovation-boundary,innovation-resonant',
+  'MEGA durable default stays static while adaptive modes remain explicit');
 
 const fixture = {
   phase: 'fight',
@@ -74,6 +80,8 @@ check(mnemeRows.some((row) => row.reason === 'zoner_far_beam')
 assert.throws(() => parseQuickArgs([]), /choose exactly one/); checks++;
 assert.throws(() => parseQuickArgs(['--armed', '--profile', 'static-byu-jumper']), /requires/); checks++;
 check(parseQuickArgs(['--dry-run', '--profile', 'static-gyle-jumper']).profile.character === 'GYLE', 'quick args bind profile');
+check(parseQuickArgs(['--dry-run', '--profile', 'static-gyle-jumper']).policyMode === 'static',
+  'quick runner defaults to frozen static policy');
 const megaArgs = parseQuickArgs([
   '--armed', '--identity', '/fake/mega', '--handle', 'MEGA_BOT',
   '--expected-fingerprint', 'SHA256:abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
@@ -206,6 +214,8 @@ check(launched[0].args.includes('static-byu-jumper') && launched[1].args.include
 'transient queue preserves current profile and successful matches rotate');
 check(launched.every((row) => row.args.includes('MEGA') && row.args.includes('SHA256:fixture')),
   'supervisor forwards the exact handle and fingerprint to every child');
+check(launched.every((row) => !row.args.includes('--policy-mode')),
+  'durable supervisor cannot implicitly activate an experimental policy mode');
 check(sleeps.join(',') === '5000,6000,5000,5000', 'supervisor applies cooldown and idle backoff');
 rmSync(temp, { recursive: true });
 

@@ -77,6 +77,17 @@ each bout is still isolated inside the reviewed one-match Quick Match child.
 See `docs/MEGA_DURABLE_QUICKMATCH.md` for the rotation, evidence boundary,
 activation, monitoring, and stop commands.
 
+The one-match child also has explicit, non-default boundary and resonant
+innovation modes for controlled policy evaluation. They do not alter the
+durable supervisor. See `docs/MEGA_INNOVATION_POLICY.md` for the oscillator,
+kick/hit feedback, replay seeds, and live-evaluation gate.
+
+The character-specific MEGAWATTS boundary and stochastic resonant controllers
+also live here as hash-pinned candidate artifacts, not in the game-server PR.
+They remain activation-blocked while the pinned server profile lacks
+MEGAWATTS. See `docs/MEGAWATTS_POLICY.md` for their mechanics, provenance, and
+promotion gate.
+
 Identity files and ledgers are deliberately ignored by Git. Never commit
 tokens, SSH private keys, unreviewed connection metadata, raw private Lounge
 traffic, or local traces. A deliberately public key fingerprint may be pinned

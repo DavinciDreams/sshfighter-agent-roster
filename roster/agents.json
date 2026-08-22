@@ -6,6 +6,31 @@
     "runtimeProfile": "ringside/sf-6 plus exact authenticated 17-fighter roster",
     "deployedCommitAttested": false
   },
+  "policyArtifacts": [
+    {
+      "id": "megawatts-boundary-v1",
+      "character": "MEGAWATTS",
+      "variant": "boundary",
+      "entrypoint": "src/policies/megawatts-innovation-policy.ts",
+      "implementationFiles": [
+        "src/policies/megawatts-innovation-policy.ts"
+      ],
+      "implementationSha256": "3a77bbc6c01955114a83373347321cad0c6a277719705baa8847f0729dbf9412",
+      "activation": "blocked-until-attested-megawatts-runtime"
+    },
+    {
+      "id": "megawatts-resonant-v1",
+      "character": "MEGAWATTS",
+      "variant": "resonant",
+      "entrypoint": "src/policies/megawatts-resonant-policy.ts",
+      "implementationFiles": [
+        "src/policies/megawatts-innovation-policy.ts",
+        "src/policies/megawatts-resonant-policy.ts"
+      ],
+      "implementationSha256": "f4c09de2472141818b8b3f2f9456cb4d06c0eea59e8b2257fef50b585b493cfc",
+      "activation": "blocked-until-attested-megawatts-runtime"
+    }
+  ],
   "runners": [
     {
       "id": "xenon-universal-bounded",
@@ -46,13 +71,16 @@
       "expectedFingerprint": "SHA256:NoCiA/EN3QjY4iBoGRjExbvAqgfYNLKk7cJKWCui8W4",
       "characters": ["BYU", "GYLE", "MNEME"],
       "profiles": ["static-byu-jumper", "static-gyle-jumper", "static-mneme-zoner"],
+      "defaultPolicyMode": "static",
+      "experimentalPolicyModes": ["innovation-boundary", "innovation-resonant"],
       "transport": "quick-match-sequential-durable",
       "entrypoint": "src/tools/durable-quickmatch-supervisor.mjs",
       "oneMatchChild": "src/tools/static-router-quickmatch.mjs",
       "test": "test:static-router-quickmatch",
-      "childRunnerSourceSha256": "d3c7c33259ac6810bd5916eeaf38c4e7e5b25951c08914193573496617dcee86",
+      "childRunnerSourceSha256": "f4223d6582eed5ca8045176e6ba2b5408c6bb79759498e92d9692f230044d72f",
       "supervisorSourceSha256": "32c462f3d002cb332f3c02e6088013939fde6c0b135bde10552d027f9c60fa40",
       "policyModuleSha256": "79a73115877331c190841b83c03d53dbb6616dc90262a075d1a87b5c59db7674",
+      "innovationPolicyModuleSha256": "24d604dabff95a35fa7252096a8f6b7739d3d18713ca1c51d77bf6414c041263",
       "sharedTransportSha256": "2b5a109ac946c87f8c98b29f59d01758a3733b1c989cbdff93bcd67cdab88f6d",
       "staticRouterWeightSha256": "ee1f5ffcb83b878bb02ce0c5b659f91a6b5b988ad971912972f9b0605b74ac4f",
       "maxMatchesPerChild": 1,

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// One-match Quick Match child for the frozen character-static Gym slice.
+// One-match Quick Match child with a frozen static default and explicit,
+// non-durable innovation-policy test modes.
 import { spawn, execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { accessSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +17,9 @@ import {
   STATIC_ROUTER_SOURCE_COMMIT, STATIC_ROUTER_WEIGHT_SHA256, createStaticGymPolicy,
   staticProfile,
 } from '../policies/static-router-gym.mjs';
+import {
+  MEGA_POLICY_MODES, createMegaInnovationPolicy,
+} from '../policies/mega-innovation-router.mjs';
 
 export const RUNNER_SCHEMA = 'sshfighter-agent-roster/mega-quickmatch/v2';
 export const SOURCE_FILE = fileURLToPath(import.meta.url);
@@ -26,7 +30,7 @@ export function parseArgs(argv) {
   let armed = false, dryRun = false;
   const allowed = new Set([
     'identity', 'handle', 'expected-fingerprint', 'expected-opponent',
-    'expected-opponent-character', 'out', 'host', 'window-ms', 'profile', 'seed',
+    'expected-opponent-character', 'out', 'host', 'window-ms', 'profile', 'seed', 'policy-mode',
   ]);
   for (let index = 0; index < argv.length; index++) {
     const raw = argv[index];
@@ -40,10 +44,17 @@ export function parseArgs(argv) {
   if (armed === dryRun) throw new Error('choose exactly one of --armed or --dry-run');
   const profile = staticProfile(values.profile ?? DURABLE_PROFILES[0].id);
   const windowMs = Number(values['window-ms'] ?? 45_000);
-  const seed = Number(values.seed ?? DEFAULT_POLICY_SEED);
+  const policyMode = values['policy-mode'] ?? 'static';
+  const entropySeed = policyMode === 'innovation-resonant' && values.seed === undefined;
+  const seed = entropySeed ? randomBytes(4).readUInt32LE(0) : Number(values.seed ?? DEFAULT_POLICY_SEED);
   if (!Number.isInteger(windowMs) || windowMs < 5_000 || windowMs > 120_000)
     throw new Error('--window-ms must be an integer from 5000 to 120000');
-  if (!Number.isInteger(seed)) throw new Error('--seed must be an integer');
+  if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
+    throw new Error('--seed must be an unsigned 32-bit integer');
+  }
+  if (!MEGA_POLICY_MODES.includes(policyMode)) {
+    throw new Error(`--policy-mode must be one of ${MEGA_POLICY_MODES.join(', ')}`);
+  }
   if (armed && (!values.identity || !values.handle || !values['expected-fingerprint'] || !values.out)) {
     throw new Error('--armed requires --identity, --handle, --expected-fingerprint, and --out');
   }
@@ -66,7 +77,8 @@ export function parseArgs(argv) {
     expectedFingerprint: values['expected-fingerprint'] ?? '',
     expectedOpponent: values['expected-opponent'],
     expectedOpponentCharacter: values['expected-opponent-character'],
-    out: values.out, host: values.host ?? 'sshfighter.com', windowMs, seed,
+    out: values.out, host: values.host ?? 'sshfighter.com', windowMs, seed, policyMode,
+    seedSource: entropySeed ? 'entropy' : values.seed === undefined ? 'default' : 'explicit',
   };
 }
 
@@ -79,10 +91,12 @@ async function fetchJson(url) {
 function runnerProvenance() {
   const root = dirname(dirname(dirname(SOURCE_FILE)));
   const policyFile = resolve(root, 'src/policies/static-router-gym.mjs');
+  const innovationPolicyFile = resolve(root, 'src/policies/mega-innovation-router.mjs');
   const transportFile = resolve(root, 'src/tools/codex-dgx-omega-quickmatch.mjs');
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   const status = execFileSync('git', ['status', '--porcelain', '--',
     'src/tools/static-router-quickmatch.mjs', 'src/policies/static-router-gym.mjs',
+    'src/policies/mega-innovation-router.mjs',
     'src/tools/codex-dgx-omega-quickmatch.mjs',
   ], { cwd: root, encoding: 'utf8' }).trim();
   return {
@@ -90,8 +104,15 @@ function runnerProvenance() {
     status: status || 'clean',
     runnerSha256: createHash('sha256').update(readFileSync(SOURCE_FILE)).digest('hex'),
     policyModuleSha256: createHash('sha256').update(readFileSync(policyFile)).digest('hex'),
+    innovationPolicyModuleSha256: createHash('sha256').update(readFileSync(innovationPolicyFile)).digest('hex'),
     sharedTransportSha256: createHash('sha256').update(readFileSync(transportFile)).digest('hex'),
   };
+}
+
+export function createPolicyForArgs(args) {
+  return args.policyMode === 'static'
+    ? createStaticGymPolicy(args.profile.id, args.seed)
+    : createMegaInnovationPolicy(args.profile.id, args.policyMode, args.seed);
 }
 
 export function validateOfficial(payload, mid, character, handle = DEFAULT_HANDLE, target = {}) {
@@ -103,7 +124,7 @@ export function validateOfficial(payload, mid, character, handle = DEFAULT_HANDL
 }
 
 export async function run(args) {
-  const policy = createStaticGymPolicy(args.profile.id, args.seed);
+  const policy = createPolicyForArgs(args);
   const vendor = verifyVendorProvenance();
   const provenance = runnerProvenance();
   const manifest = {
@@ -114,7 +135,10 @@ export async function run(args) {
     handle: args.handle,
     character: args.profile.character,
     profile: args.profile,
+    policyMode: args.policyMode,
     policySeed: args.seed,
+    policySeedSource: args.seedSource,
+    initialPolicyStatus: policy.status?.() ?? null,
     staticRouterWeightSha256: STATIC_ROUTER_WEIGHT_SHA256,
     staticRouterHfRevision: STATIC_ROUTER_HF_REVISION,
     staticRouterSourceCommit: STATIC_ROUTER_SOURCE_COMMIT,
@@ -145,6 +169,11 @@ export async function run(args) {
   const ledger = createExclusiveLedger(outputPath);
   const append = (kind, payload = {}) => ledger.append(kind, payload);
   append('session', { manifest, health, initialLive: live });
+  const decide = (state) => {
+    const result = policy.decide(state);
+    if (result.status) append('adaptive_state', { frame: state.frame, status: result.status });
+    return result;
+  };
   const ssh = spawn('ssh', [
     '-T', '-i', resolve(args.identity), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
     '-o', 'NumberOfPasswordPrompts=0', '-o', 'ConnectTimeout=10',
@@ -161,7 +190,7 @@ export async function run(args) {
     expectedFingerprint: args.expectedFingerprint,
     expectedOpponent: args.expectedOpponent,
     expectedOpponentCharacter: args.expectedOpponentCharacter,
-    decide: policy.decide,
+    decide,
     reset: policy.reset,
     rngState: policy.rngState,
     requireAckBeforeNextInput: true,
@@ -195,7 +224,10 @@ export async function run(args) {
   lines.on('line', (raw) => { void session.acceptLine(raw); });
   try { await session.done; }
   finally { lines.close(); ledger.close(); }
-  console.log(JSON.stringify({ ...session.controller.status(), mid: currentMid, log: outputPath }, null, 2));
+  console.log(JSON.stringify({
+    ...session.controller.status(), mid: currentMid, log: outputPath,
+    policyMode: args.policyMode, finalPolicyStatus: policy.status?.() ?? null,
+  }, null, 2));
 }
 
 export function transientQueueError(error) {
