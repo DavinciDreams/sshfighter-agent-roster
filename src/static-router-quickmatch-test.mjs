@@ -17,6 +17,10 @@ import {
   DEFAULT_HANDLE, parseArgs as parseQuickArgs, run as runQuick, transientQueueError, validateOfficial,
 } from './tools/static-router-quickmatch.mjs';
 import {
+  SSHFIGHTER_RUNTIME_PROFILES, selectRuntimeProfile, validateRuntimeMatchStart,
+  validateRuntimeRoster, validateRuntimeWelcome, verifyRuntimeProfileSource,
+} from './runtime/sshfighter-profiles.mjs';
+import {
   acquireSupervisorLock, parseArgs as parseSupervisorArgs, runSupervisor,
 } from './tools/durable-quickmatch-supervisor.mjs';
 
@@ -50,6 +54,42 @@ check(megaCatalog?.supervisorSourceSha256 === sha256File(resolve(sourceRoot, 'to
   'MEGA catalog pins supervisor bytes');
 check(megaCatalog?.policyModuleSha256 === sha256File(resolve(sourceRoot, 'policies/static-router-gym.mjs')),
   'MEGA catalog pins policy bytes');
+check(megaCatalog?.runtimeProfileModuleSha256 === sha256File(resolve(sourceRoot, 'runtime/sshfighter-profiles.mjs')),
+  'MEGA catalog pins dual runtime-profile bytes');
+
+const [sf6Profile, sf7Profile] = SSHFIGHTER_RUNTIME_PROFILES;
+check(sf6Profile.engine === 'sf-6' && sf6Profile.roster.length === 17
+  && sf7Profile.engine === 'sf-7' && sf7Profile.roster.length === 18
+  && sf7Profile.roster.at(-2) === 'MEGAWATTS' && sf7Profile.roster.at(-1) === 'UNCLOSE',
+'runtime profiles preserve current17 and append MEGAWATTS before UNCLOSE');
+for (const runtimeProfile of SSHFIGHTER_RUNTIME_PROFILES) {
+  const source = verifyRuntimeProfileSource(runtimeProfile);
+  check(source.profileId === runtimeProfile.id
+    && source.implementationSha256 === runtimeProfile.implementationSha256,
+  `${runtimeProfile.id} source commit and implementation hash verify`);
+  check(selectRuntimeProfile({
+    ok: true, service: 'ringside', engine: runtimeProfile.engine,
+    commit: runtimeProfile.commit, dirty: runtimeProfile.dirty, build: runtimeProfile.build,
+  }) === runtimeProfile, `${runtimeProfile.id} exact public health selects one profile`);
+  check(validateRuntimeRoster([...runtimeProfile.roster], runtimeProfile).length === runtimeProfile.roster.length,
+    `${runtimeProfile.id} exact ordered roster validates`);
+  const envelope = {
+    engine: runtimeProfile.engine, commit: runtimeProfile.commit, dirty: runtimeProfile.dirty,
+    build: runtimeProfile.build, protocol: runtimeProfile.botProtocol,
+  };
+  validateRuntimeWelcome({ ...envelope, channel: 'bot-api', playerType: 'bot' }, runtimeProfile);
+  validateRuntimeMatchStart(envelope, runtimeProfile);
+  checks += 2;
+}
+assert.throws(() => selectRuntimeProfile({
+  ok: true, service: 'ringside', engine: 'sf-7', commit: sf7Profile.commit,
+  dirty: true, build: `${sf7Profile.build}+dirty`,
+}), /unsupported or ambiguous/); checks++;
+assert.throws(() => validateRuntimeRoster(sf7Profile.roster.slice(0, -1), sf7Profile), /runtime profile mismatch/); checks++;
+assert.throws(() => validateRuntimeWelcome({
+  engine: sf7Profile.engine, commit: sf7Profile.commit, dirty: false,
+  build: sf7Profile.build, protocol: 999, channel: 'bot-api', playerType: 'bot',
+}, sf7Profile), /build does not match/); checks++;
 
 const fixture = {
   phase: 'fight',
@@ -115,12 +155,43 @@ const wrong = createOneMatchController({ windowMs: 5000, character: 'MNEME' }, {
 await wrong.handle({ t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER] });
 check(await rejects(wrong.handle({ t: 'queued', char: 'BYU' }), /queued wrong character/), 'wrong queued character rejects');
 
+const sf7Sent = [];
+const sf7Controller = createOneMatchController({
+  windowMs: 5000, handle: HANDLE, character: 'MNEME', expectedFingerprint: EXPECTED_FINGERPRINT,
+  opponentPool: 'all',
+  validateRoster: (value) => validateRuntimeRoster(value, sf7Profile),
+  validateWelcome: (message) => validateRuntimeWelcome(message, sf7Profile),
+  validateMatchStart: (message) => validateRuntimeMatchStart(message, sf7Profile),
+}, {
+  send: (message) => sf7Sent.push(message), append: () => {}, schedule: () => 1, cancel: () => {},
+  assertQueueSafe: async () => ({ queued: 0 }), fetchOfficial: async () => ({}), finish: () => {},
+});
+const sf7Envelope = {
+  engine: sf7Profile.engine, commit: sf7Profile.commit, dirty: false,
+  build: sf7Profile.build, protocol: sf7Profile.botProtocol,
+};
+await sf7Controller.handle({
+  t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, channel: 'bot-api', playerType: 'bot',
+  roster: [...sf7Profile.roster], ...sf7Envelope,
+});
+check(sf7Sent[0]?.t === 'queue' && sf7Sent[0]?.opponents === 'all',
+  'sf7 controller declares the all-opponent pool explicitly');
+await sf7Controller.handle({
+  t: 'matchStart', mid: 'sf7-match', yourCursor: sf7Profile.roster.indexOf('MNEME'),
+  oppCursor: sf7Profile.roster.indexOf('MEGAWATTS'), role: 'a', stage: 'dojo', oppName: 'OPP',
+  oppType: 'bot', ...sf7Envelope,
+});
+check(sf7Controller.status().matched === true, 'sf7 matchStart exact build and 18-roster cursor bind');
+
 const official = { match: { id: 'm1', mode: 'versus', engine_version: 'sf-6', a_name: HANDLE, a_char: 'BYU', b_name: 'OPP', b_char: 'XENON', winner: 'a', a_rounds: 2, b_rounds: 1, end_reason: 'ko' } };
 check(validateOfficial(official, 'm1', 'BYU', HANDLE) === official, 'official completion validates explicit generic handle');
 assert.throws(() => validateOfficial({ match: { ...official.match, a_char: 'GYLE' } }, 'm1', 'BYU', HANDLE), /clean uniquely bound/); checks++;
 const megaOfficial = { match: { ...official.match, a_name: 'MEGA_BOT' } };
 check(validateOfficial(megaOfficial, 'm1', 'BYU') === megaOfficial,
   'official completion defaults to the dedicated MEGA_BOT handle');
+const sf7Official = { match: { ...megaOfficial.match, engine_version: 'sf-7' } };
+check(validateOfficial(sf7Official, 'm1', 'BYU', 'MEGA_BOT', 'sf-7') === sf7Official,
+  'official completion binds the selected sf7 engine');
 
 const dry = parseQuickArgs(['--dry-run', '--profile', 'static-byu-jumper']);
 await runQuick(dry); checks++;

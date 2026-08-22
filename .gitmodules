@@ -1,3 +1,6 @@
 [submodule "vendor/sshfighter"]
 	path = vendor/sshfighter
 	url = https://github.com/thomasdavis/sshfighter.com.git
+[submodule "vendor/sshfighter-sf7"]
+	path = vendor/sshfighter-sf7
+	url = https://github.com/thomasdavis/sshfighter.com.git

@@ -46,10 +46,14 @@ If the repository was cloned without submodules:
 git submodule update --init --recursive
 ```
 
-The compatibility pin is intentionally strict. Updating
-`vendor/sshfighter` requires a dedicated PR, regenerated provenance hashes,
-the complete test suite, and fresh review. The public `sf-6` label alone is
-not a deploy-commit attestation.
+The compatibility pin is intentionally strict. Updating a `vendor/sshfighter*`
+snapshot requires a dedicated PR, regenerated provenance hashes, the complete
+test suite, and fresh review. MEGA carries exact source profiles for the live
+`sf-6@ece81777886d` 17-roster deployment and the prepared
+`sf-7@26591bce698d` 18-roster deployment. Selection requires the exact public
+health build and authenticated roster/build envelope; an engine label alone is
+never a deploy-commit attestation. Other runners retain their independently
+reviewed compatibility pins.
 
 ## Dry runs
 

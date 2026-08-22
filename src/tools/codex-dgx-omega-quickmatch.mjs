@@ -291,7 +291,8 @@ export function createOneMatchController(options, io) {
         throw new Error(`identity mismatch: ${String(message.name)} / ${String(message.fp)}`);
       }
       io.append('identity_gate', { handle: message.name, fingerprint: message.fp });
-      roster = validatePinnedRoster(message.roster);
+      options.validateWelcome?.(message);
+      roster = (options.validateRoster ?? validatePinnedRoster)(message.roster);
       const cursor = roster.indexOf(character);
       io.append('roster_gate', { cursor, rosterCount: roster.length });
       assertStrictQueueEmpty(await io.assertQueueSafe(), 'authenticated welcome queue gate');
@@ -300,15 +301,22 @@ export function createOneMatchController(options, io) {
         io.append('queue_window_expired', { windowMs: options.windowMs });
         stop('bounded_queue_window_expired');
       }, options.windowMs);
-      send({ t: 'queue', char: character }, 'welcome_zero_queue_preflight');
+      send({
+        t: 'queue', char: character,
+        ...(options.opponentPool ? { opponents: options.opponentPool } : {}),
+      }, 'welcome_zero_queue_preflight');
     } else if (message.t === 'queued') {
       if (message.char !== character) throw new Error(`queued wrong character: ${message.char}`);
+      if (options.opponentPool && message.opponents !== undefined && message.opponents !== options.opponentPool) {
+        throw new Error(`queued wrong opponent pool: ${String(message.opponents)}`);
+      }
     } else if (message.t === 'matchStart') {
       if (matched) throw new Error('second matchStart rejected');
       matched = true;
       if (queueTimer !== null) io.cancel(queueTimer);
       const ownCharacter = roster[Number(message.yourCursor)] ?? 'UNKNOWN';
       if (ownCharacter !== character) throw new Error(`matchStart character mismatch: ${ownCharacter}`);
+      options.validateMatchStart?.(message);
       matchId = String(message.mid ?? '');
       if (!matchId) throw new Error('matchStart missing match id');
       resetPolicy();

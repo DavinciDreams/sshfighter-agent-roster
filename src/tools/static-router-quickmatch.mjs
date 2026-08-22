@@ -7,15 +7,18 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
 import {
-  PINNED_ROSTER, RUNNER_SCHEMA as CONTROL_SCHEMA,
+  RUNNER_SCHEMA as CONTROL_SCHEMA,
   assertStrictQueueEmpty, createBoundedTransportSession, createExclusiveLedger,
-  validatePinnedRoster, verifyVendorProvenance,
 } from './codex-dgx-omega-quickmatch.mjs';
 import {
   DEFAULT_POLICY_SEED, DURABLE_PROFILES, STATIC_ROUTER_HF_REVISION,
   STATIC_ROUTER_SOURCE_COMMIT, STATIC_ROUTER_WEIGHT_SHA256, createStaticGymPolicy,
   staticProfile,
 } from '../policies/static-router-gym.mjs';
+import {
+  SSHFIGHTER_RUNTIME_PROFILES, selectRuntimeProfile, validateRuntimeMatchStart,
+  validateRuntimeRoster, validateRuntimeWelcome, verifyRuntimeProfileSource,
+} from '../runtime/sshfighter-profiles.mjs';
 
 export const RUNNER_SCHEMA = 'sshfighter-agent-roster/mega-quickmatch/v1';
 export const SOURCE_FILE = fileURLToPath(import.meta.url);
@@ -70,10 +73,11 @@ function runnerProvenance() {
   const root = dirname(dirname(dirname(SOURCE_FILE)));
   const policyFile = resolve(root, 'src/policies/static-router-gym.mjs');
   const transportFile = resolve(root, 'src/tools/codex-dgx-omega-quickmatch.mjs');
+  const runtimeProfileFile = resolve(root, 'src/runtime/sshfighter-profiles.mjs');
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   const status = execFileSync('git', ['status', '--porcelain', '--',
     'src/tools/static-router-quickmatch.mjs', 'src/policies/static-router-gym.mjs',
-    'src/tools/codex-dgx-omega-quickmatch.mjs',
+    'src/tools/codex-dgx-omega-quickmatch.mjs', 'src/runtime/sshfighter-profiles.mjs',
   ], { cwd: root, encoding: 'utf8' }).trim();
   return {
     head,
@@ -81,12 +85,13 @@ function runnerProvenance() {
     runnerSha256: createHash('sha256').update(readFileSync(SOURCE_FILE)).digest('hex'),
     policyModuleSha256: createHash('sha256').update(readFileSync(policyFile)).digest('hex'),
     sharedTransportSha256: createHash('sha256').update(readFileSync(transportFile)).digest('hex'),
+    runtimeProfileModuleSha256: createHash('sha256').update(readFileSync(runtimeProfileFile)).digest('hex'),
   };
 }
 
-export function validateOfficial(payload, mid, character, handle = DEFAULT_HANDLE) {
+export function validateOfficial(payload, mid, character, handle = DEFAULT_HANDLE, expectedEngine = 'sf-6') {
   const match = payload?.match;
-  if (!match || match.id !== mid || match.mode !== 'versus' || match.engine_version !== 'sf-6')
+  if (!match || match.id !== mid || match.mode !== 'versus' || match.engine_version !== expectedEngine)
     throw new Error('official result identity, mode, or engine mismatch');
   const ownA = match.a_name === handle && match.a_char === character;
   const ownB = match.b_name === handle && match.b_char === character;
@@ -99,9 +104,12 @@ export function validateOfficial(payload, mid, character, handle = DEFAULT_HANDL
 
 export async function run(args) {
   const policy = createStaticGymPolicy(args.profile.id, args.seed);
-  const vendor = verifyVendorProvenance();
   const provenance = runnerProvenance();
-  const manifest = {
+  const sourceProfiles = SSHFIGHTER_RUNTIME_PROFILES.map((profile) => ({
+    ...verifyRuntimeProfileSource(profile), engine: profile.engine, build: profile.build,
+    exactRoster: [...profile.roster], attestation: profile.attestation,
+  }));
+  const baseManifest = {
     schema: RUNNER_SCHEMA,
     agent: 'MEGA',
     expansion: 'Multi-Expert Gym Agent',
@@ -113,15 +121,14 @@ export async function run(args) {
     staticRouterWeightSha256: STATIC_ROUTER_WEIGHT_SHA256,
     staticRouterHfRevision: STATIC_ROUTER_HF_REVISION,
     staticRouterSourceCommit: STATIC_ROUTER_SOURCE_COMMIT,
-    vendor,
     provenance,
-    exactRoster: [...PINNED_ROSTER],
+    supportedRuntimeProfiles: sourceProfiles,
     maxMatches: 1,
     queueWindowMs: args.windowMs,
     dryRun: args.dryRun,
   };
   if (args.dryRun) {
-    console.log(JSON.stringify({ ready: true, networkAccess: false, socketOpened: false, manifest }, null, 2));
+    console.log(JSON.stringify({ ready: true, networkAccess: false, socketOpened: false, manifest: baseManifest }, null, 2));
     return;
   }
   if (provenance.status !== 'clean') throw new Error(`runner sources are not committed and clean: ${provenance.status}`);
@@ -131,8 +138,13 @@ export async function run(args) {
   const [health, live] = await Promise.all([
     fetchJson(`https://${args.host}/api/health`), fetchJson(`https://${args.host}/api/live`),
   ]);
-  if (health.ok !== true || health.service !== 'ringside' || health.engine !== 'sf-6')
-    throw new Error('runtime health profile gate failed');
+  const runtimeProfile = selectRuntimeProfile(health);
+  const manifest = {
+    ...baseManifest,
+    runtimeProfile: runtimeProfile.id,
+    runtimeProfileAttestation: runtimeProfile.attestation,
+    exactRoster: [...runtimeProfile.roster],
+  };
   assertStrictQueueEmpty(live, 'public preflight');
   mkdirSync(dirname(outputPath), { recursive: true });
   const ledger = createExclusiveLedger(outputPath);
@@ -156,6 +168,10 @@ export async function run(args) {
     reset: policy.reset,
     rngState: policy.rngState,
     requireAckBeforeNextInput: true,
+    opponentPool: 'all',
+    validateRoster: (value) => validateRuntimeRoster(value, runtimeProfile),
+    validateWelcome: (message) => validateRuntimeWelcome(message, runtimeProfile),
+    validateMatchStart: (message) => validateRuntimeMatchStart(message, runtimeProfile),
   }, {
     child: ssh, send, append,
     schedule: (fn, ms) => setTimeout(fn, ms), cancel: (timer) => clearTimeout(timer),
@@ -172,7 +188,7 @@ export async function run(args) {
         try {
           return validateOfficial(
             await fetchJson(`https://${args.host}/api/matches/${encodeURIComponent(mid)}`),
-            mid, args.profile.character, args.handle,
+            mid, args.profile.character, args.handle, runtimeProfile.engine,
           );
         }
         catch (error) {

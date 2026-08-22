@@ -25,7 +25,14 @@ it remains a historical control.
   directory; a stale lock fails closed and requires an operator to verify no
   process remains before removal. MEGA never self-matches.
 - Public and authenticated queue telemetry must both be numeric integer zero.
-- The authenticated welcome must contain the exact ordered 17-fighter roster.
+- Runtime selection is fail-closed over two exact, named strata. The current
+  `sf-6@ece81777886d` deployment requires its exact ordered 17-fighter roster.
+  The prepared `sf-7@26591bce698d` profile requires the exact ordered 18-fighter
+  roster with `MEGAWATTS` immediately before `UNCLOSE`, plus matching build
+  fields in both authenticated `welcome` and `matchStart` messages.
+- Both runtime source snapshots and their mechanics/bot-protocol digests are
+  read from a dedicated commit-pinned compatibility submodule. A bare `sf-6`
+  or `sf-7` label never selects a profile.
 - Every bout executes in a new one-match child and a new exclusive mode-0600
   ledger. The child never requeues.
 - The child emits no input while its previous input is unacknowledged, avoiding
@@ -75,3 +82,7 @@ systemctl --user stop sshfighter-mega-quickmatch
 `--max-matches 0` is the explicit durable setting. Use a positive value for a
 finite data block. Activation remains a live external action and must be
 separately authorized from code review or merge.
+
+The running service may remain on the sf-6-compatible release until the public
+health build and authenticated roster attest sf-7 together. Do not activate a
+profile from upstream-main status alone.
