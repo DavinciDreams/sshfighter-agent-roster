@@ -113,10 +113,17 @@ for (const agent of ['blank', 'megawatts'] as const) {
     stage: 'dojo', ...exactBuild,
   });
   await h.controller.handle(state(agent, 1, 0));
-  assert.equal(h.controller.status().localSeq, 1, `${agent}: local sequence resets per match`);
+  assert.equal(h.controller.status().localSeq, 3, `${agent}: local sequence remains connection-global`);
+  assert.equal(h.controller.status().matchSeqBase, 2, `${agent}: match sequence baseline resets`);
   assert.equal(h.controller.status().lastAck, 0, `${agent}: ACK baseline resets per match`);
+  assert.equal((h.audit.traces.at(-1) as Message).unackedInputs, 1,
+    `${agent}: zero ACK is measured from the match baseline`);
+  await h.controller.handle(state(agent, 2, 3));
+  assert.equal(h.controller.status().localSeq, 4);
+  assert.equal(h.controller.status().lastAck, 3, `${agent}: global ACK resumes after first match input`);
+  assert.equal((h.audit.traces.at(-1) as Message).unackedInputs, 1);
 }
-console.log('PASS  BLANK and MEGAWATTS bind exact identities, reset per-match ACK, and send complete snapshots');
+console.log('PASS  BLANK and MEGAWATTS bind identities and reconcile global sequence with per-match ACK zero');
 
 const noHuman = harness('blank');
 await noHuman.controller.handle({ t: 'hi', service: 'ringside-bot', ...exactBuild });

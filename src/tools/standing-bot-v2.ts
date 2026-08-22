@@ -254,6 +254,7 @@ export function createStandingController(
   const implementationSha256 = computeRunnerImplementationHash();
   let activeMatch: JsonObject | null = null;
   let localSeq = 0;
+  let matchSeqBase = 0;
   let lastAck = 0;
   let lastFrame = -1;
   let completed = 0;
@@ -312,7 +313,7 @@ export function createStandingController(
           mid, role, oppName: String(message.oppName),
           oppCharacter: PINNED_ROSTER[oppCursor], stage: String(message.stage),
         };
-        localSeq = 0;
+        matchSeqBase = localSeq;
         lastAck = 0;
         lastFrame = -1;
         policy.reset();
@@ -329,9 +330,13 @@ export function createStandingController(
         if (!activeMatch || stopping) return;
         const frame = Number(message.frame);
         const ack = Number(message.ack);
-        if (!Number.isInteger(frame) || frame <= lastFrame || !Number.isInteger(ack)
-            || ack < lastAck || ack > localSeq || !Array.isArray(message.projectiles)) {
-          throw new Error('state ordering, ack, or projectile contract violation');
+        const validAck = Number.isInteger(ack) && ack >= 0 && ack <= localSeq
+          && (ack === 0
+            ? lastAck === 0
+            : ack > matchSeqBase && (lastAck === 0 || ack >= lastAck));
+        if (!Number.isInteger(frame) || frame <= lastFrame || !validAck
+            || !Array.isArray(message.projectiles)) {
+          throw new Error(`state ordering, ack, or projectile contract violation: frame=${String(message.frame)} lastFrame=${lastFrame} ack=${String(message.ack)} lastAck=${lastAck} localSeq=${localSeq} matchSeqBase=${matchSeqBase} projectilesArray=${Array.isArray(message.projectiles)}`);
         }
         if (!['countdown', 'fight', 'round-over', 'match-over'].includes(String(message.phase))
             || !Number.isInteger(message.round) || !Number.isFinite(message.roundTime)
@@ -361,7 +366,8 @@ export function createStandingController(
         io.send(action);
         io.audit.trace({
           t: 'state-decision', receivedAtNs: started.toString(), frame, ack,
-          localSeq, unackedInputs: localSeq - ack, skippedFrames: skipped,
+          localSeq, matchSeqBase,
+          unackedInputs: localSeq - (ack === 0 ? matchSeqBase : ack), skippedFrames: skipped,
           decisionNs: decisionNs.toString(), reason: decision.reason,
           state: message, action, policy: policy.status(),
         });
@@ -402,7 +408,7 @@ export function createStandingController(
 
   return {
     handle, stop,
-    status: () => ({ activeMatch, localSeq, lastAck, lastFrame, completed, wins, losses, stopping }),
+    status: () => ({ activeMatch, localSeq, matchSeqBase, lastAck, lastFrame, completed, wins, losses, stopping }),
   };
 }
 
