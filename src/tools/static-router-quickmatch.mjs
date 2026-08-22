@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// One-match Quick Match child for the frozen character-static Gym slice.
+// One-match Quick Match child with a frozen static default and explicit,
+// non-durable innovation-policy test modes.
 import { spawn, execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { accessSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,24 +10,30 @@ import readline from 'node:readline';
 import {
   PINNED_ROSTER, RUNNER_SCHEMA as CONTROL_SCHEMA,
   assertStrictQueueEmpty, createBoundedTransportSession, createExclusiveLedger,
-  validateOfficialResult, validatePinnedRoster, verifyVendorProvenance,
+  validateOfficialResult, validatePinnedRoster, validateServerBuild, verifyVendorProvenance,
 } from './codex-dgx-omega-quickmatch.mjs';
 import {
   DEFAULT_POLICY_SEED, DURABLE_PROFILES, STATIC_ROUTER_HF_REVISION,
   STATIC_ROUTER_SOURCE_COMMIT, STATIC_ROUTER_WEIGHT_SHA256, createStaticGymPolicy,
-  staticProfile,
+  runnerProfile,
 } from '../policies/static-router-gym.mjs';
+import {
+  MEGA_POLICY_MODES, createMegaInnovationPolicy,
+} from '../policies/mega-innovation-router.mjs';
 
-export const RUNNER_SCHEMA = 'sshfighter-agent-roster/mega-quickmatch/v2';
+export const RUNNER_SCHEMA = 'sshfighter-agent-roster/adaptive-quickmatch/v3';
 export const SOURCE_FILE = fileURLToPath(import.meta.url);
 export const DEFAULT_HANDLE = 'MEGA_BOT';
+export const EXPECTED_LIVE_COMMIT = '26591bce698dad4516d59614feee67cc6d636572';
+export const EXPECTED_LIVE_BUILD = 'sf-7@26591bce698d';
 
 export function parseArgs(argv) {
   const values = {};
   let armed = false, dryRun = false;
   const allowed = new Set([
     'identity', 'handle', 'expected-fingerprint', 'expected-opponent',
-    'expected-opponent-character', 'out', 'host', 'window-ms', 'profile', 'seed',
+    'expected-opponent-character', 'expected-build', 'expected-commit', 'opponents',
+    'out', 'host', 'window-ms', 'profile', 'seed', 'policy-mode',
   ]);
   for (let index = 0; index < argv.length; index++) {
     const raw = argv[index];
@@ -38,12 +45,32 @@ export function parseArgs(argv) {
     values[raw.slice(2)] = value;
   }
   if (armed === dryRun) throw new Error('choose exactly one of --armed or --dry-run');
-  const profile = staticProfile(values.profile ?? DURABLE_PROFILES[0].id);
+  const profile = runnerProfile(values.profile ?? DURABLE_PROFILES[0].id);
   const windowMs = Number(values['window-ms'] ?? 45_000);
-  const seed = Number(values.seed ?? DEFAULT_POLICY_SEED);
+  const policyMode = values['policy-mode'] ?? 'static';
+  const entropySeed = policyMode === 'innovation-resonant' && values.seed === undefined;
+  const seed = entropySeed ? randomBytes(4).readUInt32LE(0) : Number(values.seed ?? DEFAULT_POLICY_SEED);
   if (!Number.isInteger(windowMs) || windowMs < 5_000 || windowMs > 120_000)
     throw new Error('--window-ms must be an integer from 5000 to 120000');
-  if (!Number.isInteger(seed)) throw new Error('--seed must be an integer');
+  if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
+    throw new Error('--seed must be an unsigned 32-bit integer');
+  }
+  if (!MEGA_POLICY_MODES.includes(policyMode)) {
+    throw new Error(`--policy-mode must be one of ${MEGA_POLICY_MODES.join(', ')}`);
+  }
+  const opponents = values.opponents ?? 'all';
+  if (!['all', 'humans', 'bots'].includes(opponents)) {
+    throw new Error('--opponents must be all, humans, or bots');
+  }
+  const expectedBuild = values['expected-build'] ?? EXPECTED_LIVE_BUILD;
+  const expectedCommit = values['expected-commit'] ?? EXPECTED_LIVE_COMMIT;
+  if (!/^sf-[0-9]+@[0-9a-f]{12}$/.test(expectedBuild)) {
+    throw new Error('--expected-build must be an exact sf-N@12hex build label');
+  }
+  if (!/^[0-9a-f]{40}$/.test(expectedCommit)
+      || !expectedBuild.endsWith(expectedCommit.slice(0, 12))) {
+    throw new Error('--expected-commit must be 40 hex characters matching --expected-build');
+  }
   if (armed && (!values.identity || !values.handle || !values['expected-fingerprint'] || !values.out)) {
     throw new Error('--armed requires --identity, --handle, --expected-fingerprint, and --out');
   }
@@ -66,7 +93,9 @@ export function parseArgs(argv) {
     expectedFingerprint: values['expected-fingerprint'] ?? '',
     expectedOpponent: values['expected-opponent'],
     expectedOpponentCharacter: values['expected-opponent-character'],
-    out: values.out, host: values.host ?? 'sshfighter.com', windowMs, seed,
+    expectedBuild, expectedCommit, opponents,
+    out: values.out, host: values.host ?? 'sshfighter.com', windowMs, seed, policyMode,
+    seedSource: entropySeed ? 'entropy' : values.seed === undefined ? 'default' : 'explicit',
   };
 }
 
@@ -79,10 +108,12 @@ async function fetchJson(url) {
 function runnerProvenance() {
   const root = dirname(dirname(dirname(SOURCE_FILE)));
   const policyFile = resolve(root, 'src/policies/static-router-gym.mjs');
+  const innovationPolicyFile = resolve(root, 'src/policies/mega-innovation-router.mjs');
   const transportFile = resolve(root, 'src/tools/codex-dgx-omega-quickmatch.mjs');
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   const status = execFileSync('git', ['status', '--porcelain', '--',
     'src/tools/static-router-quickmatch.mjs', 'src/policies/static-router-gym.mjs',
+    'src/policies/mega-innovation-router.mjs',
     'src/tools/codex-dgx-omega-quickmatch.mjs',
   ], { cwd: root, encoding: 'utf8' }).trim();
   return {
@@ -90,31 +121,42 @@ function runnerProvenance() {
     status: status || 'clean',
     runnerSha256: createHash('sha256').update(readFileSync(SOURCE_FILE)).digest('hex'),
     policyModuleSha256: createHash('sha256').update(readFileSync(policyFile)).digest('hex'),
+    innovationPolicyModuleSha256: createHash('sha256').update(readFileSync(innovationPolicyFile)).digest('hex'),
     sharedTransportSha256: createHash('sha256').update(readFileSync(transportFile)).digest('hex'),
   };
+}
+
+export function createPolicyForArgs(args) {
+  return args.policyMode === 'static'
+    ? createStaticGymPolicy(args.profile.id, args.seed)
+    : createMegaInnovationPolicy(args.profile.id, args.policyMode, args.seed);
 }
 
 export function validateOfficial(payload, mid, character, handle = DEFAULT_HANDLE, target = {}) {
   return validateOfficialResult(payload, {
     matchId: mid, handle, character,
+    engineVersion: target.engineVersion ?? EXPECTED_LIVE_BUILD.split('@')[0],
     expectedOpponent: target.handle,
     expectedOpponentCharacter: target.character,
   });
 }
 
 export async function run(args) {
-  const policy = createStaticGymPolicy(args.profile.id, args.seed);
+  const policy = createPolicyForArgs(args);
   const vendor = verifyVendorProvenance();
   const provenance = runnerProvenance();
   const manifest = {
     schema: RUNNER_SCHEMA,
-    agent: 'MEGA',
-    expansion: 'Multi-Expert Gym Agent',
+    agent: args.profile.agent ?? 'MEGA',
+    expansion: args.profile.agent === 'BLANK' ? 'BLANKO oscillator candidate' : 'Multi-Expert Gym Agent',
     sharedBoundedTransportSchema: CONTROL_SCHEMA,
     handle: args.handle,
     character: args.profile.character,
     profile: args.profile,
+    policyMode: args.policyMode,
     policySeed: args.seed,
+    policySeedSource: args.seedSource,
+    initialPolicyStatus: policy.status?.() ?? null,
     staticRouterWeightSha256: STATIC_ROUTER_WEIGHT_SHA256,
     staticRouterHfRevision: STATIC_ROUTER_HF_REVISION,
     staticRouterSourceCommit: STATIC_ROUTER_SOURCE_COMMIT,
@@ -125,6 +167,9 @@ export async function run(args) {
     queueWindowMs: args.windowMs,
     expectedOpponent: args.expectedOpponent ?? null,
     expectedOpponentCharacter: args.expectedOpponentCharacter ?? null,
+    expectedBuild: args.expectedBuild,
+    expectedCommit: args.expectedCommit,
+    opponents: args.opponents,
     dryRun: args.dryRun,
   };
   if (args.dryRun) {
@@ -135,16 +180,24 @@ export async function run(args) {
   accessSync(resolve(args.identity));
   const outputPath = resolve(args.out);
   if (existsSync(outputPath)) throw new Error(`refusing to overwrite ${outputPath}`);
-  const [health, live] = await Promise.all([
-    fetchJson(`https://${args.host}/api/health`), fetchJson(`https://${args.host}/api/live`),
+  const [health, version, live] = await Promise.all([
+    fetchJson(`https://${args.host}/api/health`), fetchJson(`https://${args.host}/version`),
+    fetchJson(`https://${args.host}/api/live`),
   ]);
-  if (health.ok !== true || health.service !== 'ringside' || health.engine !== 'sf-6')
+  if (health.ok !== true || health.service !== 'ringside'
+      || health.engine !== args.expectedBuild.split('@')[0])
     throw new Error('runtime health profile gate failed');
+  validateServerBuild(version, args);
   assertStrictQueueEmpty(live, 'public preflight');
   mkdirSync(dirname(outputPath), { recursive: true });
   const ledger = createExclusiveLedger(outputPath);
   const append = (kind, payload = {}) => ledger.append(kind, payload);
-  append('session', { manifest, health, initialLive: live });
+  append('session', { manifest, health, version, initialLive: live });
+  const decide = (state) => {
+    const result = policy.decide(state);
+    if (result.status) append('adaptive_state', { frame: state.frame, status: result.status });
+    return result;
+  };
   const ssh = spawn('ssh', [
     '-T', '-i', resolve(args.identity), '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
     '-o', 'NumberOfPasswordPrompts=0', '-o', 'ConnectTimeout=10',
@@ -161,7 +214,10 @@ export async function run(args) {
     expectedFingerprint: args.expectedFingerprint,
     expectedOpponent: args.expectedOpponent,
     expectedOpponentCharacter: args.expectedOpponentCharacter,
-    decide: policy.decide,
+    expectedBuild: args.expectedBuild,
+    expectedCommit: args.expectedCommit,
+    opponents: args.opponents,
+    decide,
     reset: policy.reset,
     rngState: policy.rngState,
     requireAckBeforeNextInput: true,
@@ -182,7 +238,10 @@ export async function run(args) {
           return validateOfficial(
             await fetchJson(`https://${args.host}/api/matches/${encodeURIComponent(mid)}`),
             mid, args.profile.character, args.handle,
-            { handle: args.expectedOpponent, character: args.expectedOpponentCharacter },
+            {
+              handle: args.expectedOpponent, character: args.expectedOpponentCharacter,
+              engineVersion: args.expectedBuild.split('@')[0],
+            },
           );
         }
         catch (error) {
@@ -195,7 +254,10 @@ export async function run(args) {
   lines.on('line', (raw) => { void session.acceptLine(raw); });
   try { await session.done; }
   finally { lines.close(); ledger.close(); }
-  console.log(JSON.stringify({ ...session.controller.status(), mid: currentMid, log: outputPath }, null, 2));
+  console.log(JSON.stringify({
+    ...session.controller.status(), mid: currentMid, log: outputPath,
+    policyMode: args.policyMode, finalPolicyStatus: policy.status?.() ?? null,
+  }, null, 2));
 }
 
 export function transientQueueError(error) {

@@ -12,7 +12,7 @@ import {
   agentRepoProvenance, assertStrictQueueEmpty, computeVendorImplementationHash,
   createBoundedChildLifecycle, createBoundedTransportSession, createExclusiveLedger,
   createOneMatchController, decide, deterministicFixture, parseArgs, redactLedgerValue,
-  resetRng, validatePinnedRoster, verifyVendorProvenance,
+  resetRng, validatePinnedRoster, validateServerBuild, verifyVendorProvenance,
 } from './tools/codex-dgx-omega-quickmatch.mjs';
 
 let pass = true;
@@ -27,7 +27,7 @@ check('migration pins exact upstream PR #31 head',
 check('vendor mechanics/protocol pins exact canonical commit',
   VENDOR_SOURCE_COMMIT === '3caedf3435c12996cf4d34fb5ac76c7cd7b75076');
 check('runtime evidence is truthful and exact-roster scoped',
-  DEPLOYED_COMMIT_ATTESTED === false && /exact authenticated ordered 17-fighter/.test(RUNTIME_PROFILE_EVIDENCE));
+  DEPLOYED_COMMIT_ATTESTED === false && /exact authenticated ordered 18-fighter/.test(RUNTIME_PROFILE_EVIDENCE));
 check('vendor implementation surface is explicit', JSON.stringify(VENDOR_IMPLEMENTATION_FILES) === JSON.stringify([
   'src/game/moves.ts', 'src/game/engine.ts', 'src/game/types.ts',
   'src/api/bot-server.ts', 'src/cluster/messages.ts', 'src/cluster/coordinator.ts',
@@ -72,12 +72,27 @@ const old16 = PINNED_ROSTER.slice(0, -1);
 const substituted = PINNED_ROSTER.map((value, index) => index === 7 ? 'SUBSTITUTE' : value);
 const reordered = [...PINNED_ROSTER];
 [reordered[15], reordered[16]] = [reordered[16], reordered[15]];
-check('exact authenticated ordered 17-fighter roster is pinned',
-  PINNED_ROSTER.length === 17 && PINNED_ROSTER.at(-1) === 'UNCLOSE'
+check('exact authenticated ordered 18-fighter roster is pinned',
+  PINNED_ROSTER.length === 18 && PINNED_ROSTER.at(-2) === 'MEGAWATTS' && PINNED_ROSTER.at(-1) === 'UNCLOSE'
   && throws(() => validatePinnedRoster(['BYU', CHARACTER, 'CODEX']), /exact ordered/)
   && throws(() => validatePinnedRoster(old16), /exact ordered/)
   && throws(() => validatePinnedRoster(substituted), /exact ordered/)
   && throws(() => validatePinnedRoster(reordered), /exact ordered/));
+
+const exactBuild = {
+  engine: 'sf-7', commit: '26591bce698dad4516d59614feee67cc6d636572',
+  dirty: false, build: 'sf-7@26591bce698d',
+};
+check('exact clean server build validation is available to candidate runners',
+  validateServerBuild(exactBuild, {
+    expectedBuild: exactBuild.build, expectedCommit: exactBuild.commit,
+  }).build === exactBuild.build
+  && throws(() => validateServerBuild({ ...exactBuild, build: 'sf-6@000000000000' }, {
+    expectedBuild: exactBuild.build, expectedCommit: exactBuild.commit,
+  }), /build mismatch/)
+  && throws(() => validateServerBuild({ ...exactBuild, dirty: true }, {
+    expectedBuild: exactBuild.build, expectedCommit: exactBuild.commit,
+  }), /not the expected clean/));
 
 const controllerHarness = (queuePayload = { queued: 0 }, fetchOfficial = async (matchId) => ({ match: {
   id: matchId, mode: 'versus', engine_version: 'sf-6',
@@ -99,7 +114,52 @@ const controllerHarness = (queuePayload = { queued: 0 }, fetchOfficial = async (
 const h = controllerHarness();
 await h.controller.handle({ t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER] });
 check('welcome validates exact roster and numeric-zero queue before one OMEGA queue',
-  h.sent.length === 1 && h.sent[0].t === 'queue' && h.sent[0].char === CHARACTER);
+  h.sent.length === 1 && h.sent[0].t === 'queue' && h.sent[0].char === CHARACTER
+  && h.sent[0].opponents === 'all');
+
+const botPool = controllerHarness();
+botPool.controller = createOneMatchController({
+  windowMs: 5000, opponents: 'bots', expectedBuild: exactBuild.build,
+  expectedCommit: exactBuild.commit,
+}, {
+  send: (message) => botPool.sent.push(message),
+  append: (kind, data) => botPool.rows.push({ kind, ...data }),
+  schedule: () => 1, cancel: () => {}, assertQueueSafe: async () => ({ queued: 0 }),
+  fetchOfficial: async () => ({}), finish: () => {},
+});
+await botPool.controller.handle({
+  t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER], ...exactBuild,
+});
+check('candidate runner validates build before entering the explicit bot pool',
+  botPool.sent[0]?.t === 'queue' && botPool.sent[0]?.opponents === 'bots'
+  && botPool.rows.some((row) => row.kind === 'build_gate' && row.build === exactBuild.build));
+const exactBoundary = { sent: [], rows: [], finished: null };
+const exactController = createOneMatchController({
+  windowMs: 5000, opponents: 'bots', expectedBuild: exactBuild.build,
+  expectedCommit: exactBuild.commit,
+}, {
+  send: (message) => exactBoundary.sent.push(message),
+  append: (kind, data) => exactBoundary.rows.push({ kind, ...data }),
+  schedule: () => 1, cancel: () => {}, assertQueueSafe: async () => ({ queued: 0 }),
+  fetchOfficial: async (matchId) => ({ match: {
+    id: matchId, mode: 'versus', engine_version: 'sf-7',
+    a_name: HANDLE, a_char: CHARACTER, b_name: 'OPP', b_char: 'CODEX',
+    winner: 'b', a_rounds: 0, b_rounds: 2, end_reason: 'ko',
+  } }),
+  finish: (result) => { exactBoundary.finished = result; },
+});
+await exactController.handle({
+  t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER], ...exactBuild,
+});
+await exactController.handle({
+  t: 'matchStart', mid: 'sf7-fixture', yourCursor: PINNED_ROSTER.indexOf(CHARACTER),
+  oppCursor: PINNED_ROSTER.indexOf('CODEX'), role: 'a', stage: 'dojo', oppName: 'OPP', ...exactBuild,
+});
+await exactController.handle({ t: 'matchEnd', result: { youWon: false } });
+await exactController.handle({ t: 'left' });
+check('candidate result validation inherits the exact gated engine instead of the legacy default',
+  exactBoundary.rows.some((row) => row.kind === 'match_boundary')
+  && exactBoundary.finished?.reason === 'one_match_complete');
 await h.controller.handle({ t: 'queued', char: CHARACTER });
 await h.controller.handle({
   t: 'matchStart', mid: 'fixture', yourCursor: PINNED_ROSTER.indexOf(CHARACTER),

@@ -1,0 +1,20 @@
+[Unit]
+Description=SSH Fighter standing bot - MEGAWATTSBOT / MEGAWATTS resonant policy
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=%h/Dev/.sshfighter/watts_bot_ed25519
+
+[Service]
+Type=simple
+UMask=0077
+WorkingDirectory=%h/Dev/sshfighter-agent-roster
+ExecStart=/usr/bin/pnpm runner:megawatts-standing --identity %h/Dev/.sshfighter/watts_bot_ed25519 --out-dir %h/Dev/.sshfighter/logs/megawattsbot --seed 1297568852 --armed
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

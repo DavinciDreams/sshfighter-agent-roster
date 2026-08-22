@@ -10,11 +10,12 @@ import {
   EXPECTED_FINGERPRINT, HANDLE, PINNED_ROSTER, createOneMatchController,
 } from './tools/codex-dgx-omega-quickmatch.mjs';
 import {
-  DURABLE_PROFILES, STATIC_ROUTER_HF_REVISION, STATIC_ROUTER_WEIGHT_SHA256,
-  createStaticGymPolicy, staticProfile,
+  DURABLE_PROFILES, EXPERIMENTAL_PROFILES, STATIC_ROUTER_HF_REVISION, STATIC_ROUTER_WEIGHT_SHA256,
+  createStaticGymPolicy, runnerProfile, staticProfile,
 } from './policies/static-router-gym.mjs';
 import {
-  DEFAULT_HANDLE, parseArgs as parseQuickArgs, run as runQuick, transientQueueError, validateOfficial,
+  DEFAULT_HANDLE, EXPECTED_LIVE_BUILD, EXPECTED_LIVE_COMMIT,
+  parseArgs as parseQuickArgs, run as runQuick, transientQueueError, validateOfficial,
 } from './tools/static-router-quickmatch.mjs';
 import {
   acquireSupervisorLock, parseArgs as parseSupervisorArgs, runSupervisor,
@@ -35,10 +36,15 @@ check(/^[0-9a-f]{64}$/.test(STATIC_ROUTER_WEIGHT_SHA256)
   && /^[0-9a-f]{40}$/.test(STATIC_ROUTER_HF_REVISION), 'frozen evidence hashes');
 check(staticProfile('static-mneme-zoner').cleanPointsRate === 0.9935, 'MNEME evidence metadata');
 assert.throws(() => staticProfile('unknown'), /unknown durable/); checks++;
+check(EXPERIMENTAL_PROFILES.length === 1
+  && runnerProfile('blanko-oscillator-v1').character === 'BLANKO',
+  'BLANKO profile is explicit and remains outside the durable MEGA rotation');
+assert.throws(() => staticProfile('blanko-oscillator-v1'), /unknown durable/); checks++;
 
 const catalog = JSON.parse(readFileSync(resolve(sourceRoot, '../roster/agents.json'), 'utf8'));
 const omegaCatalog = catalog.runners.find((row) => row.id === 'omega-control-v1-quickmatch');
 const megaCatalog = catalog.runners.find((row) => row.agent === 'MEGA');
+const blankCatalog = catalog.runners.find((row) => row.agent === 'BLANK');
 const sharedTransportHash = sha256File(resolve(sourceRoot, 'tools/codex-dgx-omega-quickmatch.mjs'));
 check(omegaCatalog?.runnerSourceSha256 === sharedTransportHash, 'OMEGA catalog pins shared transport bytes');
 check(megaCatalog?.sharedTransportSha256 === sharedTransportHash, 'MEGA catalog pins shared transport bytes');
@@ -51,6 +57,28 @@ check(megaCatalog?.supervisorSourceSha256 === sha256File(resolve(sourceRoot, 'to
   'MEGA catalog pins supervisor bytes');
 check(megaCatalog?.policyModuleSha256 === sha256File(resolve(sourceRoot, 'policies/static-router-gym.mjs')),
   'MEGA catalog pins policy bytes');
+check(megaCatalog?.innovationPolicyModuleSha256
+  === sha256File(resolve(sourceRoot, 'policies/mega-innovation-router.mjs')),
+  'MEGA catalog pins optional innovation policy bytes');
+check(megaCatalog?.defaultPolicyMode === 'static'
+  && megaCatalog?.experimentalPolicyModes?.join(',') === 'innovation-boundary,innovation-resonant',
+  'MEGA durable default stays static while adaptive modes remain explicit');
+check(blankCatalog?.handle === 'BLANK-BOT'
+  && blankCatalog?.expectedFingerprint === 'SHA256:xd/3Gvx2khlsWD2qBEU2kR7CUaMn1TDUTIV7qxNK7R8'
+  && blankCatalog?.character === 'BLANKO'
+  && blankCatalog?.profile === 'blanko-oscillator-v1'
+  && blankCatalog?.policyMode === 'innovation-resonant'
+  && blankCatalog?.opponents === 'bots'
+  && blankCatalog?.expectedBuild === EXPECTED_LIVE_BUILD
+  && blankCatalog?.expectedCommit === EXPECTED_LIVE_COMMIT
+  && blankCatalog?.maxMatches === 1,
+  'BLANK catalog binds its dedicated identity, candidate policy, bot pool, and one-match boundary');
+check(blankCatalog?.runnerSourceSha256 === sha256File(resolve(sourceRoot, 'tools/static-router-quickmatch.mjs'))
+  && blankCatalog?.policyModuleSha256 === sha256File(resolve(sourceRoot, 'policies/static-router-gym.mjs'))
+  && blankCatalog?.innovationPolicyModuleSha256
+    === sha256File(resolve(sourceRoot, 'policies/mega-innovation-router.mjs'))
+  && blankCatalog?.sharedTransportSha256 === sharedTransportHash,
+  'BLANK catalog pins every executable policy and transport module');
 
 const fixture = {
   phase: 'fight',
@@ -74,6 +102,20 @@ check(mnemeRows.some((row) => row.reason === 'zoner_far_beam')
 assert.throws(() => parseQuickArgs([]), /choose exactly one/); checks++;
 assert.throws(() => parseQuickArgs(['--armed', '--profile', 'static-byu-jumper']), /requires/); checks++;
 check(parseQuickArgs(['--dry-run', '--profile', 'static-gyle-jumper']).profile.character === 'GYLE', 'quick args bind profile');
+check(parseQuickArgs(['--dry-run', '--profile', 'static-gyle-jumper']).policyMode === 'static',
+  'quick runner defaults to frozen static policy');
+const blankoArgs = parseQuickArgs([
+  '--dry-run', '--profile', 'blanko-oscillator-v1', '--policy-mode', 'innovation-resonant',
+  '--opponents', 'bots',
+]);
+check(blankoArgs.profile.character === 'BLANKO' && blankoArgs.opponents === 'bots'
+  && blankoArgs.expectedBuild === EXPECTED_LIVE_BUILD
+  && blankoArgs.expectedCommit === EXPECTED_LIVE_COMMIT,
+  'BLANKO candidate binds bot-only matchmaking and exact live build provenance');
+assert.throws(() => parseQuickArgs(['--dry-run', '--opponents', 'surprise']), /opponents/); checks++;
+assert.throws(() => parseQuickArgs([
+  '--dry-run', '--expected-build', 'sf-6@000000000000', '--expected-commit', EXPECTED_LIVE_COMMIT,
+]), /matching/); checks++;
 const megaArgs = parseQuickArgs([
   '--armed', '--identity', '/fake/mega', '--handle', 'MEGA_BOT',
   '--expected-fingerprint', 'SHA256:abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
@@ -106,11 +148,12 @@ const controller = createOneMatchController({
 }, {
   send: (message) => sent.push(message), append: (kind, payload) => rows.push({ kind, ...payload }),
   schedule: () => 1, cancel: () => {}, assertQueueSafe: async () => ({ queued: 0 }),
-  fetchOfficial: async (mid) => ({ match: { id: mid, mode: 'versus', engine_version: 'sf-6', a_name: HANDLE, a_char: 'MNEME', b_name: 'OPP', b_char: 'BYU', winner: 'a', a_rounds: 2, b_rounds: 0, end_reason: 'ko' } }),
+  fetchOfficial: async (mid) => ({ match: { id: mid, mode: 'versus', engine_version: EXPECTED_LIVE_BUILD.split('@')[0], a_name: HANDLE, a_char: 'MNEME', b_name: 'OPP', b_char: 'BYU', winner: 'a', a_rounds: 2, b_rounds: 0, end_reason: 'ko' } }),
   finish: () => {},
 });
 await controller.handle({ t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER] });
-check(sent[0]?.t === 'queue' && sent[0]?.char === 'MNEME', 'generic controller queues configured character');
+check(sent[0]?.t === 'queue' && sent[0]?.char === 'MNEME' && sent[0]?.opponents === 'all',
+  'generic controller queues configured character and explicit default pool');
 await controller.handle({ t: 'matchStart', mid: 'm1', yourCursor: PINNED_ROSTER.indexOf('MNEME'), oppCursor: 0, role: 'a', stage: 'dojo', oppName: 'OPP' });
 await controller.handle({ t: 'state', frame: 1, ack: 0, ...fixture });
 check(sent[1]?.t === 'input' && rows.some((row) => row.kind === 'decision'), 'generic controller drives configured policy');
@@ -160,7 +203,7 @@ check(await rejects(wrongOpponentCharacter.handle({
   oppCursor: PINNED_ROSTER.indexOf('BYU'), role: 'a', stage: 'dojo', oppName: 'DECLARED_TARGET',
 }), /unexpected opponent character/), 'declared opponent character mismatch fails before combat input');
 
-const official = { match: { id: 'm1', mode: 'versus', engine_version: 'sf-6', a_name: HANDLE, a_char: 'BYU', b_name: 'OPP', b_char: 'XENON', winner: 'a', a_rounds: 2, b_rounds: 1, end_reason: 'ko' } };
+const official = { match: { id: 'm1', mode: 'versus', engine_version: EXPECTED_LIVE_BUILD.split('@')[0], a_name: HANDLE, a_char: 'BYU', b_name: 'OPP', b_char: 'XENON', winner: 'a', a_rounds: 2, b_rounds: 1, end_reason: 'ko' } };
 check(validateOfficial(official, 'm1', 'BYU', HANDLE) === official, 'official completion validates explicit generic handle');
 assert.throws(() => validateOfficial(official, 'm1', 'BYU', HANDLE, {
   handle: 'WRONG_TARGET', character: 'XENON',
@@ -206,6 +249,8 @@ check(launched[0].args.includes('static-byu-jumper') && launched[1].args.include
 'transient queue preserves current profile and successful matches rotate');
 check(launched.every((row) => row.args.includes('MEGA') && row.args.includes('SHA256:fixture')),
   'supervisor forwards the exact handle and fingerprint to every child');
+check(launched.every((row) => !row.args.includes('--policy-mode')),
+  'durable supervisor cannot implicitly activate an experimental policy mode');
 check(sleeps.join(',') === '5000,6000,5000,5000', 'supervisor applies cooldown and idle backoff');
 rmSync(temp, { recursive: true });
 

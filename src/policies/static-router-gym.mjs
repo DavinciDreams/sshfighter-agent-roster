@@ -13,10 +13,23 @@ export const DURABLE_PROFILES = Object.freeze([
   Object.freeze({ id: 'static-gyle-jumper', character: 'GYLE', policy: 'jumper', cleanPointsRate: 0.8105 }),
   Object.freeze({ id: 'static-mneme-zoner', character: 'MNEME', policy: 'zoner', cleanPointsRate: 0.9935 }),
 ]);
+export const EXPERIMENTAL_PROFILES = Object.freeze([
+  Object.freeze({
+    id: 'blanko-oscillator-v1', agent: 'BLANK', character: 'BLANKO', policy: 'blanko',
+    evidence: 'mechanics-authored-transfer',
+  }),
+]);
+export const RUNNER_PROFILES = Object.freeze([...DURABLE_PROFILES, ...EXPERIMENTAL_PROFILES]);
 
 export function staticProfile(id) {
   const profile = DURABLE_PROFILES.find((entry) => entry.id === id);
   if (!profile) throw new Error(`unknown durable static-router profile: ${String(id)}`);
+  return profile;
+}
+
+export function runnerProfile(id) {
+  const profile = RUNNER_PROFILES.find((entry) => entry.id === id);
+  if (!profile) throw new Error(`unknown runner profile: ${String(id)}`);
   return profile;
 }
 
@@ -45,8 +58,16 @@ function specialCode(self, kind) {
   return kind === 'beam' ? `D${forward}` : `D${back}`;
 }
 
+function blankoSpecial(self, kind) {
+  const forward = self.facing === 1 ? 'R' : 'L';
+  const back = self.facing === 1 ? 'L' : 'R';
+  if (kind === 'rolling') return { motion: `${back}${forward}`, punch: true };
+  if (kind === 'vertical') return { motion: 'DU', kick: true };
+  return { motion: 'DU', punch: true };
+}
+
 export function createStaticGymPolicy(profileId, seed = DEFAULT_POLICY_SEED) {
-  const profile = staticProfile(profileId);
+  const profile = runnerProfile(profileId);
   const rng = createSeededRandom(seed);
   const decide = (state) => {
     const { you: self, opp, phase } = state;
@@ -56,6 +77,41 @@ export function createStaticGymPolicy(profileId, seed = DEFAULT_POLICY_SEED) {
     const dist = Math.abs(dx);
     const toward = Math.sign(dx) || self.facing;
     const away = -toward;
+    if (profile.policy === 'blanko') {
+      if (self.stun > 0) {
+        action.moveX = away; action.down = true;
+        return { action, reason: 'blanko_stun_guard' };
+      }
+      if (self.attack !== 'none') return { action, reason: 'blanko_committed_neutral' };
+      const incoming = (state.projectiles ?? []).some((projectile) => {
+        const projectileDx = self.x - Number(projectile.x ?? self.x);
+        return Math.abs(projectileDx) < 84
+          && Math.sign(projectileDx) === Math.sign(Number(projectile.vx ?? 0));
+      });
+      if (incoming || (opp.active && dist < 48)) {
+        action.moveX = away; action.down = true;
+        return { action, reason: incoming ? 'blanko_projectile_guard' : 'blanko_active_guard' };
+      }
+      if (opp.y > 7 && dist < 64) {
+        Object.assign(action, blankoSpecial(self, 'vertical'));
+        return { action, reason: 'blanko_vertical_anti_air' };
+      }
+      if (dist <= 27) {
+        if (rng.next() < 0.32) action.throw = true;
+        else Object.assign(action, blankoSpecial(self, 'electric'));
+        return { action, reason: action.throw ? 'blanko_close_throw' : 'blanko_close_electric' };
+      }
+      if (dist <= 52) {
+        Object.assign(action, blankoSpecial(self, 'electric'));
+        return { action, reason: 'blanko_pressure_electric' };
+      }
+      if (dist <= 118 && opp.y <= 4 && opp.attack === 'none') {
+        Object.assign(action, blankoSpecial(self, 'rolling'));
+        return { action, reason: 'blanko_rolling_close' };
+      }
+      action.moveX = toward;
+      return { action, reason: 'blanko_reacquire' };
+    }
     if (profile.policy === 'jumper') {
       if (self.stun > 0) {
         action.moveX = away; action.down = true;
