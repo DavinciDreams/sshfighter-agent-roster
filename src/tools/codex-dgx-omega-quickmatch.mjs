@@ -18,12 +18,12 @@ export const POLICY_FUNCTION_SHA256 = 'ab9b903e9ba74b046b1439adccfedc33224c8ed24
 export const EXPECTED_FINGERPRINT = 'SHA256:w5cpyiWy6jpCFRaLxln5ZOvrWy1x+QoeWC0PAR4La+A';
 export const MIGRATED_FROM_UPSTREAM_PR_HEAD = 'aa72038b4aa2068ea9d295fcd2f8778f6d61e874';
 export const VENDOR_SOURCE_COMMIT = '3caedf3435c12996cf4d34fb5ac76c7cd7b75076';
-export const RUNNER_SCHEMA = 'sshfighter-agent-roster/omega-quickmatch/v1';
+export const RUNNER_SCHEMA = 'sshfighter-agent-roster/omega-quickmatch/v2';
 export const DEPLOYED_COMMIT_ATTESTED = false;
-export const RUNTIME_PROFILE_EVIDENCE = 'ringside/sf-6 health plus exact authenticated ordered 17-fighter welcome roster';
+export const RUNTIME_PROFILE_EVIDENCE = 'ringside/sf-7 health plus exact authenticated ordered 18-fighter welcome roster';
 export const PINNED_ROSTER = [
   'BYU', 'MEN', 'BLANKO', 'CHONG', 'GYLE', 'ZANG', 'DHAL', 'HONDO',
-  'KIRA', 'MAKO', 'OMEGA', 'CODEX', 'FABLE', 'MNEME', 'AJAX', 'XENON', 'UNCLOSE',
+  'KIRA', 'MAKO', 'OMEGA', 'CODEX', 'FABLE', 'MNEME', 'AJAX', 'XENON', 'MEGAWATTS', 'UNCLOSE',
 ];
 export const CHILD_TERM_GRACE_MS = 250;
 export const CHILD_KILL_GRACE_MS = 1_000;
@@ -75,6 +75,52 @@ export function validatePinnedRoster(value) {
   return [...PINNED_ROSTER];
 }
 
+export function validateServerBuild(message, options = {}) {
+  const expectedBuild = options.expectedBuild;
+  const expectedCommit = options.expectedCommit;
+  if (expectedBuild && message?.build !== expectedBuild) {
+    throw new Error(`server build mismatch: expected ${expectedBuild}, got ${String(message?.build)}`);
+  }
+  if (expectedCommit && message?.commit !== expectedCommit) {
+    throw new Error(`server commit mismatch: expected ${expectedCommit}, got ${String(message?.commit)}`);
+  }
+  const expectedEngine = expectedBuild?.split('@')[0];
+  if ((expectedBuild || expectedCommit)
+      && ((expectedEngine && message?.engine !== expectedEngine) || message?.dirty !== false)) {
+    throw new Error(`server build is not the expected clean release: ${String(message?.engine)} / ${String(message?.dirty)}`);
+  }
+  return {
+    engine: message?.engine ?? null,
+    commit: message?.commit ?? null,
+    build: message?.build ?? null,
+    dirty: message?.dirty ?? null,
+  };
+}
+
+export function validateOfficialResult(payload, options) {
+  const match = payload?.match;
+  if (!match || match.id !== options.matchId || match.mode !== 'versus'
+      || match.engine_version !== (options.engineVersion ?? 'sf-6')) {
+    throw new Error('official result identity, mode, or engine mismatch');
+  }
+  const ownA = match.a_name === options.handle && match.a_char === options.character;
+  const ownB = match.b_name === options.handle && match.b_char === options.character;
+  if (ownA === ownB || !['ko', 'time'].includes(match.end_reason)
+      || !['a', 'b'].includes(match.winner)
+      || !Number.isInteger(match.a_rounds) || !Number.isInteger(match.b_rounds)) {
+    throw new Error('official result is not a clean uniquely bound completion');
+  }
+  const opponent = ownA ? match.b_name : match.a_name;
+  const opponentCharacter = ownA ? match.b_char : match.a_char;
+  if (options.expectedOpponent && opponent !== options.expectedOpponent) {
+    throw new Error(`official opponent mismatch: expected ${options.expectedOpponent}, got ${String(opponent)}`);
+  }
+  if (options.expectedOpponentCharacter && opponentCharacter !== options.expectedOpponentCharacter) {
+    throw new Error(`official opponent character mismatch: expected ${options.expectedOpponentCharacter}, got ${String(opponentCharacter)}`);
+  }
+  return payload;
+}
+
 function secretField(key) {
   const normalized = key.toLowerCase();
   return normalized === 'fp' || normalized.endsWith('_fp') || normalized.includes('fingerprint')
@@ -104,6 +150,7 @@ export function createExclusiveLedger(outputPath, dependencies = {}) {
   const sync = dependencies.sync ?? fsyncSync;
   const closeFd = dependencies.close ?? closeSync;
   const now = dependencies.now ?? (() => new Date().toISOString());
+  const monotonicNs = dependencies.monotonicNs ?? (() => process.hrtime.bigint());
   const fd = open(outputPath, 'wx', 0o600);
   let seq = 0;
   let closed = false;
@@ -111,7 +158,9 @@ export function createExclusiveLedger(outputPath, dependencies = {}) {
     append(kind, payload = {}) {
       if (closed) return;
       const safe = redactLedgerValue(payload);
-      write(fd, `${JSON.stringify({ seq: seq++, at: now(), kind, ...safe })}\n`);
+      write(fd, `${JSON.stringify({
+        seq: seq++, at: now(), monotonicNs: String(monotonicNs()), kind, ...safe,
+      })}\n`);
     },
     close() {
       if (closed) return;
@@ -156,10 +205,15 @@ export function parseArgs(argv) {
     const name = argv[index];
     if (name === '--armed') { args.armed = true; continue; }
     if (name === '--dry-run') { args.dryRun = true; continue; }
-    if (!['--identity', '--out', '--host', '--window-ms'].includes(name)) throw new Error(`unknown argument: ${name}`);
+    if (![
+      '--identity', '--out', '--host', '--window-ms',
+      '--expected-opponent', '--expected-opponent-character',
+    ].includes(name)) throw new Error(`unknown argument: ${name}`);
     const value = argv[++index];
     if (!value || value.startsWith('--')) throw new Error(`${name} requires a value`);
     if (name === '--window-ms') args.windowMs = Number(value);
+    else if (name === '--expected-opponent') args.expectedOpponent = value;
+    else if (name === '--expected-opponent-character') args.expectedOpponentCharacter = value;
     else args[name.slice(2)] = value;
   }
   if (args.armed === args.dryRun) throw new Error('choose exactly one of --armed or --dry-run');
@@ -167,6 +221,12 @@ export function parseArgs(argv) {
     throw new Error('--window-ms must be an integer from 5000 to 120000');
   }
   if (args.armed && (!args.identity || !args.out)) throw new Error('--armed requires --identity and --out');
+  if (Boolean(args.expectedOpponent) !== Boolean(args.expectedOpponentCharacter)) {
+    throw new Error('--expected-opponent and --expected-opponent-character must be provided together');
+  }
+  if (args.expectedOpponentCharacter && !PINNED_ROSTER.includes(args.expectedOpponentCharacter)) {
+    throw new Error('--expected-opponent-character must be in the pinned roster');
+  }
   return args;
 }
 
@@ -263,6 +323,7 @@ export function createOneMatchController(options, io) {
   const handleName = options.handle ?? HANDLE;
   const character = options.character ?? CHARACTER;
   const expectedFingerprint = options.expectedFingerprint ?? EXPECTED_FINGERPRINT;
+  const opponents = options.opponents ?? 'all';
   const decidePolicy = options.decide ?? decide;
   const resetPolicy = options.reset ?? resetRng;
   let matchId = '';
@@ -274,7 +335,21 @@ export function createOneMatchController(options, io) {
   let roster = [];
   let localInputSeq = 0;
   let lastInputAck = 0;
-  const send = (message, cause) => { io.append('outbound', { cause, message }); io.send(message); };
+  let lastStateFrame = null;
+  let pendingTransportSkippedFrames = 0;
+  let totalStateFrames = 0;
+  let skippedStateFrames = 0;
+  let decisionCount = 0;
+  let decisionInFlight = false;
+  let coalescedStateMessages = 0;
+  let acknowledgedInputs = 0;
+  let maxAckLatencyMs = 0;
+  const pendingInputs = new Map();
+  const nowNs = io.monotonicNs ?? (() => process.hrtime.bigint());
+  const send = (message, cause, telemetry = {}) => {
+    io.append('outbound', { cause, ...telemetry, message });
+    io.send(message);
+  };
   const stop = (cause) => {
     if (stopping) return;
     stopping = true;
@@ -291,6 +366,7 @@ export function createOneMatchController(options, io) {
         throw new Error(`identity mismatch: ${String(message.name)} / ${String(message.fp)}`);
       }
       io.append('identity_gate', { handle: message.name, fingerprint: message.fp });
+      io.append('build_gate', validateServerBuild(message, options));
       roster = validatePinnedRoster(message.roster);
       const cursor = roster.indexOf(character);
       io.append('roster_gate', { cursor, rosterCount: roster.length });
@@ -300,28 +376,70 @@ export function createOneMatchController(options, io) {
         io.append('queue_window_expired', { windowMs: options.windowMs });
         stop('bounded_queue_window_expired');
       }, options.windowMs);
-      send({ t: 'queue', char: character }, 'welcome_zero_queue_preflight');
+      send({ t: 'queue', char: character, opponents }, 'welcome_zero_queue_preflight');
     } else if (message.t === 'queued') {
       if (message.char !== character) throw new Error(`queued wrong character: ${message.char}`);
+      if (message.opponents && message.opponents !== opponents) {
+        throw new Error(`queued opponent pool mismatch: expected ${opponents}, got ${String(message.opponents)}`);
+      }
     } else if (message.t === 'matchStart') {
       if (matched) throw new Error('second matchStart rejected');
       matched = true;
       if (queueTimer !== null) io.cancel(queueTimer);
       const ownCharacter = roster[Number(message.yourCursor)] ?? 'UNKNOWN';
       if (ownCharacter !== character) throw new Error(`matchStart character mismatch: ${ownCharacter}`);
+      io.append('build_gate', { boundary: 'matchStart', ...validateServerBuild(message, options) });
       matchId = String(message.mid ?? '');
       if (!matchId) throw new Error('matchStart missing match id');
+      const opponentCharacter = roster[Number(message.oppCursor)] ?? 'UNKNOWN';
+      if (options.expectedOpponent && message.oppName !== options.expectedOpponent) {
+        throw new Error(`unexpected opponent: expected ${options.expectedOpponent}, got ${String(message.oppName)}`);
+      }
+      if (options.expectedOpponentCharacter && opponentCharacter !== options.expectedOpponentCharacter) {
+        throw new Error(`unexpected opponent character: expected ${options.expectedOpponentCharacter}, got ${opponentCharacter}`);
+      }
       resetPolicy();
       localInputSeq = 0;
       lastInputAck = 0;
+      lastStateFrame = null;
+      pendingTransportSkippedFrames = 0;
+      pendingInputs.clear();
       io.append('match_start', {
         matchId, role: message.role, stage: message.stage, ownCharacter,
-        opponent: message.oppName, opponentCharacter: roster[Number(message.oppCursor)] ?? 'UNKNOWN',
+        opponent: message.oppName, opponentCharacter,
       });
     } else if (message.t === 'state' && matched && !stopping && !ending) {
+      const receivedNs = nowNs();
+      const frame = Number(message.frame);
       const ack = Number(message.ack ?? 0);
+      if (!Number.isInteger(frame) || frame < 0) throw new Error(`invalid state frame ${String(message.frame)}`);
       if (!Number.isInteger(ack) || ack < lastInputAck || ack > localInputSeq)
         throw new Error(`invalid input ack progression ${lastInputAck}->${String(message.ack)}/${localInputSeq}`);
+      const frameDelta = lastStateFrame === null ? 0 : frame - lastStateFrame;
+      if (frameDelta < 0) throw new Error(`state frame regressed ${lastStateFrame}->${frame}`);
+      const skippedFrames = Math.max(0, frameDelta - 1);
+      totalStateFrames++;
+      skippedStateFrames += skippedFrames;
+      pendingTransportSkippedFrames += skippedFrames;
+      const newlyAcknowledged = [];
+      for (let sequence = lastInputAck + 1; sequence <= ack; sequence++) {
+        const pending = pendingInputs.get(sequence);
+        if (!pending) continue;
+        const ackLatencyMs = Number(receivedNs - pending.sentNs) / 1_000_000;
+        const sample = {
+          inputSeq: sequence, sentFrame: pending.frame,
+          ackFrame: frame, ackFrameLag: frame - pending.frame, ackLatencyMs,
+        };
+        newlyAcknowledged.push(sample);
+        pendingInputs.delete(sequence);
+        acknowledgedInputs++;
+        maxAckLatencyMs = Math.max(maxAckLatencyMs, ackLatencyMs);
+      }
+      io.append('transport_sample', {
+        matchId, frame, ack, frameDelta, skippedFrames, newlyAcknowledged,
+        unackedInputs: localInputSeq - ack,
+      });
+      lastStateFrame = frame;
       lastInputAck = ack;
       if (options.requireAckBeforeNextInput && ack < localInputSeq) {
         io.append('input_suppressed', {
@@ -329,17 +447,50 @@ export function createOneMatchController(options, io) {
         });
         return;
       }
+      if (decisionInFlight) {
+        coalescedStateMessages++;
+        io.append('input_suppressed', {
+          matchId, frame, reason: 'decision-in-flight', ack, localInputSeq,
+        });
+        return;
+      }
+      decisionInFlight = true;
+      const transportSkippedFrames = pendingTransportSkippedFrames;
+      pendingTransportSkippedFrames = 0;
       const rngBefore = options.rngState?.() ?? rngState;
-      const result = decidePolicy(message);
-      io.append('decision', {
-        matchId, frame: message.frame, ack: message.ack ?? null,
-        rngBefore, rngAfter: options.rngState?.() ?? rngState, reason: result.reason, action: result.action,
-      });
-      send(result.action, 'state_decision');
-      localInputSeq++;
+      const decisionStartedNs = nowNs();
+      try {
+        const result = await decidePolicy({ ...message, transportSkippedFrames });
+        if (stopping || ending) {
+          io.append('input_suppressed', {
+            matchId, frame, reason: 'decision-completed-after-stop', stopping, ending,
+          });
+          return;
+        }
+        const decisionCompletedNs = nowNs();
+        const decisionMs = Number(decisionCompletedNs - decisionStartedNs) / 1_000_000;
+        const inputSeq = localInputSeq + 1;
+        decisionCount++;
+        io.append('decision', {
+          matchId, frame: message.frame, ack: message.ack ?? null,
+          inputSeq, decisionMs,
+          rngBefore, rngAfter: options.rngState?.() ?? rngState, reason: result.reason, action: result.action,
+        });
+        const sentNs = nowNs();
+        pendingInputs.set(inputSeq, { frame, sentNs });
+        send(result.action, 'state_decision', { inputSeq, frame, decisionMs });
+        localInputSeq = inputSeq;
+      } finally {
+        decisionInFlight = false;
+      }
     } else if (message.t === 'matchEnd' && matched && !stopping && !ending) {
       ending = true;
-      const official = await io.fetchOfficial(matchId);
+      const official = validateOfficialResult(await io.fetchOfficial(matchId), {
+        matchId, handle: handleName, character,
+        engineVersion: options.engineVersion ?? options.expectedBuild?.split('@')[0],
+        expectedOpponent: options.expectedOpponent,
+        expectedOpponentCharacter: options.expectedOpponentCharacter,
+      });
       if (stopping) return;
       io.append('match_boundary', { matchId, clientResult: message.result ?? null, official });
       stop('one_match_complete');
@@ -353,7 +504,13 @@ export function createOneMatchController(options, io) {
     handle,
     stop,
     dispose: () => { if (queueTimer !== null) io.cancel(queueTimer); },
-    status: () => ({ matchId, stopping, stopCause, ending, matched, localInputSeq, lastInputAck }),
+    status: () => ({
+      matchId, stopping, stopCause, ending, matched, localInputSeq, lastInputAck,
+      transport: {
+        totalStateFrames, skippedStateFrames, decisionCount, coalescedStateMessages, acknowledgedInputs,
+        maxAckLatencyMs, unackedInputs: localInputSeq - lastInputAck,
+      },
+    }),
   };
 }
 
@@ -519,12 +676,17 @@ export async function run(args) {
     runtimeProfileEvidence: RUNTIME_PROFILE_EVIDENCE,
     health, initialLive: live,
     queueWindowMs: args.windowMs, matchLimit: 1,
+    expectedOpponent: args.expectedOpponent ?? null,
+    expectedOpponentCharacter: args.expectedOpponentCharacter ?? null,
   });
 
   const ssh = spawn('ssh', ['-T', '-i', resolve(args.identity), '-o', 'IdentitiesOnly=yes', `${HANDLE}@${args.host}`, 'play'], { stdio: ['pipe', 'pipe', 'inherit'] });
   const lines = readline.createInterface({ input: ssh.stdout });
   const send = (message) => { if (!ssh.stdin.destroyed) ssh.stdin.write(`${JSON.stringify(message)}\n`); };
-  const session = createBoundedTransportSession({ windowMs: args.windowMs }, {
+  const session = createBoundedTransportSession({
+    windowMs: args.windowMs, expectedOpponent: args.expectedOpponent,
+    expectedOpponentCharacter: args.expectedOpponentCharacter,
+  }, {
     child: ssh, send, append,
     schedule: (fn, ms) => setTimeout(fn, ms), cancel: (timer) => clearTimeout(timer),
     addSignal: (handler) => process.once('SIGINT', handler),
@@ -537,7 +699,7 @@ export async function run(args) {
     fetchOfficial: async (matchId) => {
       for (let attempt = 1; attempt <= 12; attempt++) {
         try { return await fetchJson(`https://${args.host}/api/matches/${encodeURIComponent(matchId)}`); }
-        catch (error) { if (attempt === 12) return { unavailable: true, error: String(error) }; await new Promise((ok) => setTimeout(ok, attempt * 250)); }
+        catch (error) { if (attempt === 12) throw error; await new Promise((ok) => setTimeout(ok, attempt * 250)); }
       }
     },
   });

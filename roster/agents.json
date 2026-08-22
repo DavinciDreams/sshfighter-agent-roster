@@ -3,8 +3,17 @@
   "vendor": {
     "repository": "https://github.com/thomasdavis/sshfighter.com.git",
     "commit": "3caedf3435c12996cf4d34fb5ac76c7cd7b75076",
-    "runtimeProfile": "ringside/sf-6 plus exact authenticated 17-fighter roster",
+    "reviewedSourceProfile": "ringside/sf-6 plus exact authenticated 17-fighter roster",
     "deployedCommitAttested": false
+  },
+  "liveRuntime": {
+    "engine": "sf-8",
+    "commit": "614fc431c214c74dbc32741d1e25a39b4084acf2",
+    "build": "sf-8@614fc431c214",
+    "botProtocol": 2,
+    "botSchemaSha256": "b4eeecb42f32f6f217c23ead2997681d49a68158f4da2a2e5d5e9ad6f21f3a2a",
+    "rosterCount": 18,
+    "attestation": "version, health, canonical bot schema, and authenticated welcome/matchStart"
   },
   "gyms": [
     {
@@ -20,6 +29,31 @@
       "observationProfiles": ["bot-protocol-v2", "engine-oracle-v1"],
       "actuationProfiles": ["snapshot-input-v2", "round-safe-fifo-v2"],
       "datasetEpoch": "sf8/protocol2"
+    }
+  ],
+  "policyArtifacts": [
+    {
+      "id": "megawatts-boundary-v1",
+      "character": "MEGAWATTS",
+      "variant": "boundary",
+      "entrypoint": "src/policies/megawatts-innovation-policy.ts",
+      "implementationFiles": [
+        "src/policies/megawatts-innovation-policy.ts"
+      ],
+      "implementationSha256": "548b91008f5d1418ac963313622f0d64ab0258a8891defa31861f888342a8b46",
+      "activation": "review-gated-sf8-standing-runner"
+    },
+    {
+      "id": "megawatts-resonant-v1",
+      "character": "MEGAWATTS",
+      "variant": "resonant",
+      "entrypoint": "src/policies/megawatts-resonant-policy.ts",
+      "implementationFiles": [
+        "src/policies/megawatts-innovation-policy.ts",
+        "src/policies/megawatts-resonant-policy.ts"
+      ],
+      "implementationSha256": "ae3a6edba683af9861bcbcf4a601e4d384fb4a8124c8b60d1e80427d9967259e",
+      "activation": "review-gated-sf8-standing-runner"
     }
   ],
   "runners": [
@@ -50,9 +84,85 @@
       "transport": "quick-match-outgoing",
       "entrypoint": "src/tools/codex-dgx-omega-quickmatch.mjs",
       "test": "test:omega-quickmatch",
-      "runnerSourceSha256": "af90aec6115fc109226e9ea07208324c4b2b98faa0d99b9619a89a2a9af47d69",
+      "runnerSourceSha256": "0dcfba5b09f21347fb392595f3d4a285bde8ac296bff8bf8ccdddb6e6e748bbb",
       "policyFunctionSha256": "ab9b903e9ba74b046b1439adccfedc33224c8ed247355335931f026018f86497",
       "maxMatches": 1
+    },
+    {
+      "id": "blanko-oscillator-candidate",
+      "agent": "BLANK",
+      "handle": "BLANK-BOT",
+      "expectedFingerprint": "SHA256:xd/3Gvx2khlsWD2qBEU2kR7CUaMn1TDUTIV7qxNK7R8",
+      "character": "BLANKO",
+      "profile": "blanko-oscillator-v1",
+      "policyMode": "innovation-resonant",
+      "opponents": "bots",
+      "expectedBuild": "sf-7@26591bce698d",
+      "expectedCommit": "26591bce698dad4516d59614feee67cc6d636572",
+      "transport": "quick-match-one-bout-candidate",
+      "entrypoint": "src/tools/static-router-quickmatch.mjs",
+      "test": "test:mega-innovation-policy",
+      "runnerSourceSha256": "779e059c8f8926465dc5933f4f1f3ad20db7e8b5cab8b2cdf1335147b87653cc",
+      "policyModuleSha256": "d24fa3c81c7ca3bcb79d8695c5c3e1768eba8e1390d4e33df8db66ce95140416",
+      "innovationPolicyModuleSha256": "cc4aae27da04b77f66ab4b48cc22de824607fa5d464ae1807d791ffcd3abeef8",
+      "sharedTransportSha256": "0dcfba5b09f21347fb392595f3d4a285bde8ac296bff8bf8ccdddb6e6e748bbb",
+      "maxMatches": 1
+    },
+    {
+      "id": "blanko-oscillator-standing-v2",
+      "agent": "BLANK",
+      "handle": "BLANK-BOT",
+      "expectedFingerprint": "SHA256:xd/3Gvx2khlsWD2qBEU2kR7CUaMn1TDUTIV7qxNK7R8",
+      "character": "BLANKO",
+      "policy": "blanko-oscillator-resonant-v1",
+      "seed": 20260822,
+      "opponents": "bots",
+      "expectedBuild": "sf-8@614fc431c214",
+      "expectedCommit": "614fc431c214c74dbc32741d1e25a39b4084acf2",
+      "botProtocol": 2,
+      "botSchemaSha256": "b4eeecb42f32f6f217c23ead2997681d49a68158f4da2a2e5d5e9ad6f21f3a2a",
+      "transport": "ssh-play-standing",
+      "entrypoint": "src/tools/standing-bot-v2.ts",
+      "service": "deploy/systemd/user/sshfighter-blank-bot.service",
+      "test": "test:standing-bot-v2",
+      "implementationFiles": [
+        "src/tools/standing-bot-v2.ts",
+        "src/policies/static-router-gym.mjs",
+        "src/policies/mega-innovation-router.mjs",
+        "src/policies/megawatts-innovation-policy.ts",
+        "src/policies/megawatts-resonant-policy.ts"
+      ],
+      "implementationSha256": "fd258bc0067fbe6c313b730cfa882aacc839e2c4b8836665ebb35bd5f9d8c656",
+      "matchLimit": "standing; one bot-only match at a time",
+      "activation": "independent-review-and-merge-required"
+    },
+    {
+      "id": "megawatts-resonant-standing-v2",
+      "agent": "MEGAWATTS",
+      "handle": "MEGAWATTSBOT",
+      "expectedFingerprint": "SHA256:Zb/rg2d5XEjD6tU5a3aS6CLjrAiDOAh41Tlj55TeFRE",
+      "character": "MEGAWATTS",
+      "policy": "megawatts-resonant-v1",
+      "seed": 1297568852,
+      "opponents": "bots",
+      "expectedBuild": "sf-8@614fc431c214",
+      "expectedCommit": "614fc431c214c74dbc32741d1e25a39b4084acf2",
+      "botProtocol": 2,
+      "botSchemaSha256": "b4eeecb42f32f6f217c23ead2997681d49a68158f4da2a2e5d5e9ad6f21f3a2a",
+      "transport": "ssh-play-standing",
+      "entrypoint": "src/tools/standing-bot-v2.ts",
+      "service": "deploy/systemd/user/sshfighter-megawattsbot.service",
+      "test": "test:standing-bot-v2",
+      "implementationFiles": [
+        "src/tools/standing-bot-v2.ts",
+        "src/policies/static-router-gym.mjs",
+        "src/policies/mega-innovation-router.mjs",
+        "src/policies/megawatts-innovation-policy.ts",
+        "src/policies/megawatts-resonant-policy.ts"
+      ],
+      "implementationSha256": "fd258bc0067fbe6c313b730cfa882aacc839e2c4b8836665ebb35bd5f9d8c656",
+      "matchLimit": "standing; one bot-only match at a time",
+      "activation": "independent-review-and-merge-required"
     },
     {
       "id": "mega-static-router-durable",
@@ -62,14 +172,17 @@
       "expectedFingerprint": "SHA256:NoCiA/EN3QjY4iBoGRjExbvAqgfYNLKk7cJKWCui8W4",
       "characters": ["BYU", "GYLE", "MNEME"],
       "profiles": ["static-byu-jumper", "static-gyle-jumper", "static-mneme-zoner"],
+      "defaultPolicyMode": "static",
+      "experimentalPolicyModes": ["innovation-boundary", "innovation-resonant"],
       "transport": "quick-match-sequential-durable",
       "entrypoint": "src/tools/durable-quickmatch-supervisor.mjs",
       "oneMatchChild": "src/tools/static-router-quickmatch.mjs",
       "test": "test:static-router-quickmatch",
-      "childRunnerSourceSha256": "b380b09e3019552fbf2c5b7cb6a0b6fed55832c6e4b1afb572b7c334f5d475f4",
+      "childRunnerSourceSha256": "779e059c8f8926465dc5933f4f1f3ad20db7e8b5cab8b2cdf1335147b87653cc",
       "supervisorSourceSha256": "32c462f3d002cb332f3c02e6088013939fde6c0b135bde10552d027f9c60fa40",
-      "policyModuleSha256": "79a73115877331c190841b83c03d53dbb6616dc90262a075d1a87b5c59db7674",
-      "sharedTransportSha256": "af90aec6115fc109226e9ea07208324c4b2b98faa0d99b9619a89a2a9af47d69",
+      "policyModuleSha256": "d24fa3c81c7ca3bcb79d8695c5c3e1768eba8e1390d4e33df8db66ce95140416",
+      "innovationPolicyModuleSha256": "cc4aae27da04b77f66ab4b48cc22de824607fa5d464ae1807d791ffcd3abeef8",
+      "sharedTransportSha256": "0dcfba5b09f21347fb392595f3d4a285bde8ac296bff8bf8ccdddb6e6e748bbb",
       "staticRouterWeightSha256": "ee1f5ffcb83b878bb02ce0c5b659f91a6b5b988ad971912972f9b0605b74ac4f",
       "maxMatchesPerChild": 1,
       "supervisorMatchLimit": "operator-configured; 0 means durable"

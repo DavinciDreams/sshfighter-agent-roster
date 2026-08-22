@@ -12,7 +12,7 @@ import {
   agentRepoProvenance, assertStrictQueueEmpty, computeVendorImplementationHash,
   createBoundedChildLifecycle, createBoundedTransportSession, createExclusiveLedger,
   createOneMatchController, decide, deterministicFixture, parseArgs, redactLedgerValue,
-  resetRng, validatePinnedRoster, verifyVendorProvenance,
+  resetRng, validatePinnedRoster, validateServerBuild, verifyVendorProvenance,
 } from './tools/codex-dgx-omega-quickmatch.mjs';
 
 let pass = true;
@@ -27,7 +27,7 @@ check('migration pins exact upstream PR #31 head',
 check('vendor mechanics/protocol pins exact canonical commit',
   VENDOR_SOURCE_COMMIT === '3caedf3435c12996cf4d34fb5ac76c7cd7b75076');
 check('runtime evidence is truthful and exact-roster scoped',
-  DEPLOYED_COMMIT_ATTESTED === false && /exact authenticated ordered 17-fighter/.test(RUNTIME_PROFILE_EVIDENCE));
+  DEPLOYED_COMMIT_ATTESTED === false && /exact authenticated ordered 18-fighter/.test(RUNTIME_PROFILE_EVIDENCE));
 check('vendor implementation surface is explicit', JSON.stringify(VENDOR_IMPLEMENTATION_FILES) === JSON.stringify([
   'src/game/moves.ts', 'src/game/engine.ts', 'src/game/types.ts',
   'src/api/bot-server.ts', 'src/cluster/messages.ts', 'src/cluster/coordinator.ts',
@@ -50,6 +50,11 @@ check('default launch is impossible', throws(() => parseArgs([]), /choose exactl
 check('armed mode requires identity and output', throws(() => parseArgs(['--armed']), /requires --identity and --out/));
 check('queue window is bounded', throws(() => parseArgs(['--dry-run', '--window-ms', '200000']), /5000 to 120000/));
 check('dry-run requires no identity or output', parseArgs(['--dry-run']).dryRun === true);
+check('target declarations are paired and roster-bound',
+  throws(() => parseArgs(['--dry-run', '--expected-opponent', 'TARGET']), /provided together/)
+  && throws(() => parseArgs([
+    '--dry-run', '--expected-opponent', 'TARGET', '--expected-opponent-character', 'TYPO',
+  ]), /pinned roster/));
 check('fixed seed remains OMEG', POLICY_SEED === 0x4f4d4547);
 check('policy rerun is byte deterministic', JSON.stringify(deterministicFixture()) === JSON.stringify(deterministicFixture()));
 resetRng();
@@ -67,21 +72,40 @@ const old16 = PINNED_ROSTER.slice(0, -1);
 const substituted = PINNED_ROSTER.map((value, index) => index === 7 ? 'SUBSTITUTE' : value);
 const reordered = [...PINNED_ROSTER];
 [reordered[15], reordered[16]] = [reordered[16], reordered[15]];
-check('exact authenticated ordered 17-fighter roster is pinned',
-  PINNED_ROSTER.length === 17 && PINNED_ROSTER.at(-1) === 'UNCLOSE'
+check('exact authenticated ordered 18-fighter roster is pinned',
+  PINNED_ROSTER.length === 18 && PINNED_ROSTER.at(-2) === 'MEGAWATTS' && PINNED_ROSTER.at(-1) === 'UNCLOSE'
   && throws(() => validatePinnedRoster(['BYU', CHARACTER, 'CODEX']), /exact ordered/)
   && throws(() => validatePinnedRoster(old16), /exact ordered/)
   && throws(() => validatePinnedRoster(substituted), /exact ordered/)
   && throws(() => validatePinnedRoster(reordered), /exact ordered/));
 
-const controllerHarness = (queuePayload = { queued: 0 }) => {
+const exactBuild = {
+  engine: 'sf-7', commit: '26591bce698dad4516d59614feee67cc6d636572',
+  dirty: false, build: 'sf-7@26591bce698d',
+};
+check('exact clean server build validation is available to candidate runners',
+  validateServerBuild(exactBuild, {
+    expectedBuild: exactBuild.build, expectedCommit: exactBuild.commit,
+  }).build === exactBuild.build
+  && throws(() => validateServerBuild({ ...exactBuild, build: 'sf-6@000000000000' }, {
+    expectedBuild: exactBuild.build, expectedCommit: exactBuild.commit,
+  }), /build mismatch/)
+  && throws(() => validateServerBuild({ ...exactBuild, dirty: true }, {
+    expectedBuild: exactBuild.build, expectedCommit: exactBuild.commit,
+  }), /not the expected clean/));
+
+const controllerHarness = (queuePayload = { queued: 0 }, fetchOfficial = async (matchId) => ({ match: {
+  id: matchId, mode: 'versus', engine_version: 'sf-6',
+  a_name: HANDLE, a_char: CHARACTER, b_name: 'OPP', b_char: 'CODEX',
+  winner: 'a', a_rounds: 2, b_rounds: 0, end_reason: 'ko',
+} })) => {
   const sent = [], rows = [], timers = [];
   let finished = null;
   const controller = createOneMatchController({ windowMs: 5000 }, {
     send: (message) => sent.push(message), append: (kind, data) => rows.push({ kind, ...data }),
     schedule: (fn) => { timers.push(fn); return timers.length - 1; }, cancel: () => {},
     assertQueueSafe: async () => queuePayload,
-    fetchOfficial: async (matchId) => ({ match: { id: matchId, end_reason: 'ko' } }),
+    fetchOfficial,
     finish: (summary) => { finished = summary; },
   });
   return { controller, sent, rows, timers, get finished() { return finished; } };
@@ -90,7 +114,52 @@ const controllerHarness = (queuePayload = { queued: 0 }) => {
 const h = controllerHarness();
 await h.controller.handle({ t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER] });
 check('welcome validates exact roster and numeric-zero queue before one OMEGA queue',
-  h.sent.length === 1 && h.sent[0].t === 'queue' && h.sent[0].char === CHARACTER);
+  h.sent.length === 1 && h.sent[0].t === 'queue' && h.sent[0].char === CHARACTER
+  && h.sent[0].opponents === 'all');
+
+const botPool = controllerHarness();
+botPool.controller = createOneMatchController({
+  windowMs: 5000, opponents: 'bots', expectedBuild: exactBuild.build,
+  expectedCommit: exactBuild.commit,
+}, {
+  send: (message) => botPool.sent.push(message),
+  append: (kind, data) => botPool.rows.push({ kind, ...data }),
+  schedule: () => 1, cancel: () => {}, assertQueueSafe: async () => ({ queued: 0 }),
+  fetchOfficial: async () => ({}), finish: () => {},
+});
+await botPool.controller.handle({
+  t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER], ...exactBuild,
+});
+check('candidate runner validates build before entering the explicit bot pool',
+  botPool.sent[0]?.t === 'queue' && botPool.sent[0]?.opponents === 'bots'
+  && botPool.rows.some((row) => row.kind === 'build_gate' && row.build === exactBuild.build));
+const exactBoundary = { sent: [], rows: [], finished: null };
+const exactController = createOneMatchController({
+  windowMs: 5000, opponents: 'bots', expectedBuild: exactBuild.build,
+  expectedCommit: exactBuild.commit,
+}, {
+  send: (message) => exactBoundary.sent.push(message),
+  append: (kind, data) => exactBoundary.rows.push({ kind, ...data }),
+  schedule: () => 1, cancel: () => {}, assertQueueSafe: async () => ({ queued: 0 }),
+  fetchOfficial: async (matchId) => ({ match: {
+    id: matchId, mode: 'versus', engine_version: 'sf-7',
+    a_name: HANDLE, a_char: CHARACTER, b_name: 'OPP', b_char: 'CODEX',
+    winner: 'b', a_rounds: 0, b_rounds: 2, end_reason: 'ko',
+  } }),
+  finish: (result) => { exactBoundary.finished = result; },
+});
+await exactController.handle({
+  t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER], ...exactBuild,
+});
+await exactController.handle({
+  t: 'matchStart', mid: 'sf7-fixture', yourCursor: PINNED_ROSTER.indexOf(CHARACTER),
+  oppCursor: PINNED_ROSTER.indexOf('CODEX'), role: 'a', stage: 'dojo', oppName: 'OPP', ...exactBuild,
+});
+await exactController.handle({ t: 'matchEnd', result: { youWon: false } });
+await exactController.handle({ t: 'left' });
+check('candidate result validation inherits the exact gated engine instead of the legacy default',
+  exactBoundary.rows.some((row) => row.kind === 'match_boundary')
+  && exactBoundary.finished?.reason === 'one_match_complete');
 await h.controller.handle({ t: 'queued', char: CHARACTER });
 await h.controller.handle({
   t: 'matchStart', mid: 'fixture', yourCursor: PINNED_ROSTER.indexOf(CHARACTER),
@@ -102,11 +171,96 @@ await h.controller.handle({
   opp: { x: 120, y: 0, attack: 'none' },
 });
 check('fight emits exactly one deterministic input', h.sent.length === 2 && h.sent[1].t === 'input');
+
+let releaseDecision;
+const delayedDecision = new Promise((resolvePromise) => { releaseDecision = resolvePromise; });
+const concurrent = controllerHarness();
+concurrent.controller = createOneMatchController({
+  windowMs: 5000, decide: async (state) => {
+    await delayedDecision;
+    return { action: { t: 'input', punch: true, motion: 'N', frame: state.frame }, reason: 'delayed' };
+  }, requireAckBeforeNextInput: true,
+}, {
+  send: (message) => concurrent.sent.push(message),
+  append: (kind, data) => concurrent.rows.push({ kind, ...data }),
+  schedule: () => 1, cancel: () => {}, assertQueueSafe: async () => ({ queued: 0 }),
+  fetchOfficial: async () => ({}), finish: () => {},
+});
+await concurrent.controller.handle({
+  t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER],
+});
+await concurrent.controller.handle({
+  t: 'matchStart', mid: 'concurrent', yourCursor: PINNED_ROSTER.indexOf(CHARACTER),
+  oppCursor: PINNED_ROSTER.indexOf('CODEX'), role: 'a', stage: 'dojo', oppName: 'OPP',
+});
+const firstDecision = concurrent.controller.handle({
+  t: 'state', frame: 1, ack: 0, phase: 'fight',
+  you: { x: 50, y: 0, facing: 1, attack: 'none' }, opp: { x: 120, y: 0, attack: 'none' },
+});
+await concurrent.controller.handle({
+  t: 'state', frame: 2, ack: 0, phase: 'fight',
+  you: { x: 50, y: 0, facing: 1, attack: 'none' }, opp: { x: 120, y: 0, attack: 'none' },
+});
+releaseDecision();
+await firstDecision;
+check('async policy coalesces concurrent state instead of bypassing ACK gating',
+  concurrent.sent.filter((message) => message.t === 'input').length === 1
+  && concurrent.rows.some((row) => row.kind === 'input_suppressed' && row.reason === 'decision-in-flight')
+  && concurrent.controller.status().transport.coalescedStateMessages === 1);
+
+let releaseStaleDecision;
+const staleDecisionGate = new Promise((resolvePromise) => { releaseStaleDecision = resolvePromise; });
+const stale = controllerHarness();
+stale.controller = createOneMatchController({
+  windowMs: 5000, decide: async () => {
+    await staleDecisionGate;
+    return { action: { t: 'input', punch: true, motion: 'N' }, reason: 'stale' };
+  },
+}, {
+  send: (message) => stale.sent.push(message),
+  append: (kind, data) => stale.rows.push({ kind, ...data }),
+  schedule: () => 1, cancel: () => {}, assertQueueSafe: async () => ({ queued: 0 }),
+  fetchOfficial: async (matchId) => ({ match: {
+    id: matchId, mode: 'versus', engine_version: 'sf-6',
+    a_name: HANDLE, a_char: CHARACTER, b_name: 'OPP', b_char: 'CODEX',
+    winner: 'a', a_rounds: 2, b_rounds: 0, end_reason: 'ko',
+  } }), finish: () => {},
+});
+await stale.controller.handle({
+  t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER],
+});
+await stale.controller.handle({
+  t: 'matchStart', mid: 'stale', yourCursor: PINNED_ROSTER.indexOf(CHARACTER),
+  oppCursor: PINNED_ROSTER.indexOf('CODEX'), role: 'a', stage: 'dojo', oppName: 'OPP',
+});
+const staleDecision = stale.controller.handle({
+  t: 'state', frame: 1, ack: 0, phase: 'fight',
+  you: { x: 50, y: 0, facing: 1, attack: 'none' }, opp: { x: 120, y: 0, attack: 'none' },
+});
+await stale.controller.handle({ t: 'matchEnd', result: { youWon: true } });
+releaseStaleDecision();
+await staleDecision;
+check('async decision cannot send after match completion closes the session',
+  stale.sent.map((message) => message.t).join(',') === 'queue,leave'
+  && stale.rows.some((row) => row.kind === 'input_suppressed'
+    && row.reason === 'decision-completed-after-stop'));
 await h.controller.handle({ t: 'matchEnd', result: { youWon: true } });
 check('one match sends leave instead of requeue',
   h.sent.length === 3 && h.sent[2].t === 'leave' && h.controller.status().stopping);
 await h.controller.handle({ t: 'left' });
 check('clean left finalizes one bounded match', h.finished?.matched === true && h.finished?.matchId === 'fixture');
+
+const unavailableOfficial = controllerHarness({ queued: 0 }, async () => ({ unavailable: true }));
+await unavailableOfficial.controller.handle({
+  t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER],
+});
+await unavailableOfficial.controller.handle({
+  t: 'matchStart', mid: 'unavailable', yourCursor: PINNED_ROSTER.indexOf(CHARACTER),
+  oppCursor: PINNED_ROSTER.indexOf('CODEX'), role: 'a', stage: 'dojo', oppName: 'OPP',
+});
+check('unavailable official result cannot become successful acceptance evidence',
+  await rejects(unavailableOfficial.controller.handle({ t: 'matchEnd' }), /official result/)
+  && !unavailableOfficial.rows.some((row) => row.kind === 'match_boundary'));
 
 let strictWelcome = true;
 for (const queued of invalidQueued) {
@@ -146,15 +300,17 @@ check('recursive redaction covers opponent fingerprints, keys, tokens, identitie
 
 const ledgerDir = mkdtempSync(join(tmpdir(), 'omega-ledger-'));
 const ledgerPath = join(ledgerDir, 'audit.jsonl');
-const ledger = createExclusiveLedger(ledgerPath, { now: () => 'fixed' });
+const ledger = createExclusiveLedger(ledgerPath, { now: () => 'fixed', monotonicNs: () => 123n });
 ledger.append('match_boundary', {
   official: { match: { a_fp: 'A', b_fp: 'B', fingerprint: 'C', privateKey: 'D', accessToken: 'E', identityPath: '/secret' } },
 });
 ledger.close();
 const ledgerText = readFileSync(ledgerPath, 'utf8');
-const ledgerMatch = JSON.parse(ledgerText).official.match;
+const ledgerRow = JSON.parse(ledgerText);
+const ledgerMatch = ledgerRow.official.match;
 check('exclusive mode-0600 ledger applies recursive redaction to every appended payload',
   (statSync(ledgerPath).mode & 0o777) === 0o600
+  && ledgerRow.monotonicNs === '123'
   && Object.values(ledgerMatch).every((value) => value === '[REDACTED]')
   && (ledgerText.match(/\[REDACTED\]/g) ?? []).length === 6);
 rmSync(ledgerDir, { recursive: true });
@@ -214,7 +370,11 @@ const sessionHarness = ({ windowMs = 50, globalTimeoutMs = 10_000, queueCheck = 
     child, send: (message) => sent.push(message), append: (kind, payload) => rows.push({ kind, ...payload }),
     schedule: clock.schedule, cancel: clock.cancel,
     addSignal: (handler) => { signalHandler = handler; }, removeSignal: () => { signalHandler = null; },
-    assertQueueSafe: queueCheck, fetchOfficial: async () => ({ match: { end_reason: 'ko' } }),
+    assertQueueSafe: queueCheck, fetchOfficial: async (matchId) => ({ match: {
+      id: matchId, mode: 'versus', engine_version: 'sf-6',
+      a_name: HANDLE, a_char: CHARACTER, b_name: 'OPP', b_char: 'CODEX',
+      winner: 'a', a_rounds: 2, b_rounds: 0, end_reason: 'ko',
+    } }),
   });
   return { clock, child, sent, rows, session, get signalHandler() { return signalHandler; } };
 };

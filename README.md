@@ -22,6 +22,8 @@ maintainer:
 | CODEX | incoming passive opponent | `CODEX_DGX` / CODEX | one challenge from `XENON_DGX` / XENON |
 | OMEGA | outgoing bounded Quick Match | `CODEX_DGX` / OMEGA | explicit arm, dual empty-queue gate, one match |
 | MEGA | durable sequential Quick Match | `MEGA_BOT` / BYU, GYLE, MNEME | dedicated bot-labeled identity; frozen static-router profiles; fresh one-match child per bout |
+| BLANK | protocol-2 standing bot | `BLANK-BOT` / BLANKO | bot-only queue; resonant oscillator transfer; exact sf-8 gate |
+| MEGAWATTS | protocol-2 standing bot | `MEGAWATTSBOT` / MEGAWATTS | bot-only queue; resonant character policy; exact sf-8 gate |
 
 Every runner is bounded to one match per invocation and never requeues. The
 XENON and CODEX runners use direct Lounge challenges only. OMEGA and MEGA use
@@ -48,7 +50,7 @@ git submodule update --init --recursive
 
 The compatibility pin is intentionally strict. Updating
 `vendor/sshfighter` requires a dedicated PR, regenerated provenance hashes,
-the complete test suite, and fresh review. The public `sf-6` label alone is
+the complete test suite, and fresh review. A public engine label alone is
 not a deploy-commit attestation.
 
 ## Current-live Gym
@@ -89,6 +91,31 @@ each bout is still isolated inside the reviewed one-match Quick Match child.
 See `docs/MEGA_DURABLE_QUICKMATCH.md` for the rotation, evidence boundary,
 activation, monitoring, and stop commands.
 
+The one-match child also has explicit, non-default boundary and resonant
+innovation modes for controlled policy evaluation. They do not alter the
+durable supervisor. See `docs/MEGA_INNOVATION_POLICY.md` for the oscillator,
+kick/hit feedback, replay seeds, and live-evaluation gate.
+
+The same oscillator/evidence controller has an agent-owned `BLANKO` transfer
+profile. Its baseline and pressure heads use Rolling Attack, Vertical Roll,
+and Electric Thunder, while the durable MEGA rotation remains unchanged:
+
+```bash
+pnpm runner:blanko-quickmatch --dry-run --seed 20260822
+```
+
+An armed BLANKO run must use a dedicated identity, an exclusive ledger path,
+and the explicit `bots` opponent pool. The runner validates and records the
+exact clean server `build` and `commit` before entering matchmaking and checks
+them again at `matchStart`.
+
+The character-specific MEGAWATTS boundary and stochastic resonant controllers
+also live here as hash-pinned agent-owned artifacts, not in the game-server PR.
+The standing runner binds the current exact sf-8/protocol-2 schema and uses the
+documented SSH `play` transport plus read-only REST preflight/result evidence.
+See `docs/MEGAWATTS_POLICY.md` for mechanics and `docs/STANDING_BOTS_V2.md` for
+the reviewed deployment and trace boundary.
+
 Identity files and ledgers are deliberately ignored by Git. Never commit
 tokens, SSH private keys, unreviewed connection metadata, raw private Lounge
 traffic, or local traces. A deliberately public key fingerprint may be pinned
@@ -101,3 +128,11 @@ requires a separately coordinated opponent, explicit consent, an exact
 character/profile binding, a fresh ledger path, and the runner's one-match
 bound. Results are transport evidence unless an efficacy experiment was
 separately predeclared.
+
+Predeclared efficacy blocks follow the
+[live evaluation contract](docs/LIVE_EVALUATION.md): exact opponent/profile
+targeting, policy or checkpoint provenance bound to official match IDs, and
+monotonic decision/ACK telemetry. Exact efficacy targeting requires a
+coordinated direct Lounge challenge. The Quick Match target guard only rejects
+combat/evidence after pairing and can create an official forfeit; it is not a
+targeting mechanism or a substitute for an unavailable target.
