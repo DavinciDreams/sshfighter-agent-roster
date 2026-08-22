@@ -180,13 +180,17 @@ export function createMegaInnovationPolicy(
     oscillator.step(elapsed);
     cues = cues.filter((cue) => state.frame - cue.frame <= config.cueWindowFrames);
 
-    // Offline frame-step controllers see elapsed=1. Under the live ACK gate,
-    // elapsed>1 records policy-visible action-opportunity loss without
-    // pretending to know server-internal latency.
-    if (elapsed > 1) {
+    // The live transport supplies wire-observed skipped frames. Decision-frame
+    // spacing alone is not a transport gap because ACK gating intentionally
+    // samples the otherwise contiguous state stream. Offline callers retain
+    // the original frame-delta fallback when no transport sample is present.
+    const hasTransportSample = Number.isInteger(state.transportSkippedFrames)
+      && state.transportSkippedFrames >= 0;
+    const skippedFrames = hasTransportSample ? state.transportSkippedFrames : Math.max(0, elapsed - 1);
+    if (skippedFrames > 0) {
       evidence.transportGaps++;
-      evidence.skippedDecisionFrames += elapsed - 1;
-      addCue('transport-gap', state.frame, Math.min(0.55, (elapsed - 1) / 10), -Math.PI / 3);
+      evidence.skippedDecisionFrames += skippedFrames;
+      addCue('transport-gap', state.frame, Math.min(0.55, skippedFrames / 10), -Math.PI / 3);
     }
 
     const selfHp = Number(state.you?.hp ?? previousSelfHp);

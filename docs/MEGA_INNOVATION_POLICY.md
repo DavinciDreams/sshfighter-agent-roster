@@ -22,13 +22,12 @@ wire-safe heads whose literal normal kicks retain attempt/hit/miss feedback.
 `MegaKickModel` is a small two-state damped oscillator. Between observations it
 rotates and contracts by `exp(-gamma * dt)`, with `gamma > 0`. Damage, confirmed
 hits, normal-kick outcomes, opponent commitment, compression, projectile
-traffic, and policy-visible action-opportunity gaps apply directional kicks.
+traffic, and wire-observed missing state frames apply directional kicks.
 
-An action-opportunity gap means the policy was next invoked more than one game
-frame after its previous decision. Offline frame-step evaluation normally sees
-no such gap. Under the one-input-in-flight live runner, it can reflect ACK
-waiting or state coalescing. It is intentionally not described as a server
-latency measurement.
+The live runner derives a transport gap from missing frames in the received
+state stream. Normal one-input-in-flight ACK pacing can space policy decisions
+across otherwise contiguous states and is not counted as loss. This evidence is
+intentionally not described as a server latency measurement.
 
 The boundary controller flips its complete tactical head only when both votes
 agree at round close:

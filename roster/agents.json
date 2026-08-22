@@ -66,7 +66,7 @@
       "transport": "quick-match-outgoing",
       "entrypoint": "src/tools/codex-dgx-omega-quickmatch.mjs",
       "test": "test:omega-quickmatch",
-      "runnerSourceSha256": "3495379ced0c70b1ac0034822cc602fa23c8b239e2ddf918df7dadff04e1e414",
+      "runnerSourceSha256": "0dcfba5b09f21347fb392595f3d4a285bde8ac296bff8bf8ccdddb6e6e748bbb",
       "policyFunctionSha256": "ab9b903e9ba74b046b1439adccfedc33224c8ed247355335931f026018f86497",
       "maxMatches": 1
     },
@@ -86,8 +86,8 @@
       "test": "test:mega-innovation-policy",
       "runnerSourceSha256": "779e059c8f8926465dc5933f4f1f3ad20db7e8b5cab8b2cdf1335147b87653cc",
       "policyModuleSha256": "d24fa3c81c7ca3bcb79d8695c5c3e1768eba8e1390d4e33df8db66ce95140416",
-      "innovationPolicyModuleSha256": "71e955e4979bcef9c42d0799546910d983cecf3f2dcf88c7e0753247650dac35",
-      "sharedTransportSha256": "3495379ced0c70b1ac0034822cc602fa23c8b239e2ddf918df7dadff04e1e414",
+      "innovationPolicyModuleSha256": "cb56fc11b6602ec521b54323f6b90fddb546fff467209cb673df4833b7ecbac7",
+      "sharedTransportSha256": "0dcfba5b09f21347fb392595f3d4a285bde8ac296bff8bf8ccdddb6e6e748bbb",
       "maxMatches": 1
     },
     {
@@ -107,8 +107,8 @@
       "childRunnerSourceSha256": "779e059c8f8926465dc5933f4f1f3ad20db7e8b5cab8b2cdf1335147b87653cc",
       "supervisorSourceSha256": "32c462f3d002cb332f3c02e6088013939fde6c0b135bde10552d027f9c60fa40",
       "policyModuleSha256": "d24fa3c81c7ca3bcb79d8695c5c3e1768eba8e1390d4e33df8db66ce95140416",
-      "innovationPolicyModuleSha256": "71e955e4979bcef9c42d0799546910d983cecf3f2dcf88c7e0753247650dac35",
-      "sharedTransportSha256": "3495379ced0c70b1ac0034822cc602fa23c8b239e2ddf918df7dadff04e1e414",
+      "innovationPolicyModuleSha256": "cb56fc11b6602ec521b54323f6b90fddb546fff467209cb673df4833b7ecbac7",
+      "sharedTransportSha256": "0dcfba5b09f21347fb392595f3d4a285bde8ac296bff8bf8ccdddb6e6e748bbb",
       "staticRouterWeightSha256": "ee1f5ffcb83b878bb02ce0c5b659f91a6b5b988ad971912972f9b0605b74ac4f",
       "maxMatchesPerChild": 1,
       "supervisorMatchLimit": "operator-configured; 0 means durable"

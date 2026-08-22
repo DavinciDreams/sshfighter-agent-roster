@@ -71,6 +71,16 @@ gap.decide(state(9, { you: fighter({ hp: 88 }), opp: fighter({ x: 86, facing: -1
 check(gap.status().evidence.transportGaps === 1
   && gap.status().activeCues.includes('transport-gap'),
 'wire-visible action-opportunity loss is an explicit transport cue');
+const ackSampled = createMegaInnovationPolicy('static-gyle-jumper', 'innovation-resonant', 991);
+ackSampled.decide({ ...state(1), transportSkippedFrames: 0 });
+ackSampled.decide({ ...state(9), transportSkippedFrames: 0 });
+check(ackSampled.status().evidence.transportGaps === 0
+  && !ackSampled.status().activeCues.includes('transport-gap'),
+'ACK-paced decision sampling is not mislabeled as wire transport loss');
+ackSampled.decide({ ...state(12), transportSkippedFrames: 2 });
+check(ackSampled.status().evidence.transportGaps === 1
+  && ackSampled.status().evidence.skippedDecisionFrames === 2,
+'wire-observed skipped state frames remain explicit oscillator evidence');
 
 function resonantTrace(seed) {
   const policy = createMegaInnovationPolicy('static-mneme-zoner', 'innovation-resonant', seed);

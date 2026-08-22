@@ -133,6 +133,33 @@ await botPool.controller.handle({
 check('candidate runner validates build before entering the explicit bot pool',
   botPool.sent[0]?.t === 'queue' && botPool.sent[0]?.opponents === 'bots'
   && botPool.rows.some((row) => row.kind === 'build_gate' && row.build === exactBuild.build));
+const exactBoundary = { sent: [], rows: [], finished: null };
+const exactController = createOneMatchController({
+  windowMs: 5000, opponents: 'bots', expectedBuild: exactBuild.build,
+  expectedCommit: exactBuild.commit,
+}, {
+  send: (message) => exactBoundary.sent.push(message),
+  append: (kind, data) => exactBoundary.rows.push({ kind, ...data }),
+  schedule: () => 1, cancel: () => {}, assertQueueSafe: async () => ({ queued: 0 }),
+  fetchOfficial: async (matchId) => ({ match: {
+    id: matchId, mode: 'versus', engine_version: 'sf-7',
+    a_name: HANDLE, a_char: CHARACTER, b_name: 'OPP', b_char: 'CODEX',
+    winner: 'b', a_rounds: 0, b_rounds: 2, end_reason: 'ko',
+  } }),
+  finish: (result) => { exactBoundary.finished = result; },
+});
+await exactController.handle({
+  t: 'welcome', name: HANDLE, fp: EXPECTED_FINGERPRINT, roster: [...PINNED_ROSTER], ...exactBuild,
+});
+await exactController.handle({
+  t: 'matchStart', mid: 'sf7-fixture', yourCursor: PINNED_ROSTER.indexOf(CHARACTER),
+  oppCursor: PINNED_ROSTER.indexOf('CODEX'), role: 'a', stage: 'dojo', oppName: 'OPP', ...exactBuild,
+});
+await exactController.handle({ t: 'matchEnd', result: { youWon: false } });
+await exactController.handle({ t: 'left' });
+check('candidate result validation inherits the exact gated engine instead of the legacy default',
+  exactBoundary.rows.some((row) => row.kind === 'match_boundary')
+  && exactBoundary.finished?.reason === 'one_match_complete');
 await h.controller.handle({ t: 'queued', char: CHARACTER });
 await h.controller.handle({
   t: 'matchStart', mid: 'fixture', yourCursor: PINNED_ROSTER.indexOf(CHARACTER),

@@ -336,6 +336,7 @@ export function createOneMatchController(options, io) {
   let localInputSeq = 0;
   let lastInputAck = 0;
   let lastStateFrame = null;
+  let pendingTransportSkippedFrames = 0;
   let totalStateFrames = 0;
   let skippedStateFrames = 0;
   let decisionCount = 0;
@@ -401,6 +402,7 @@ export function createOneMatchController(options, io) {
       localInputSeq = 0;
       lastInputAck = 0;
       lastStateFrame = null;
+      pendingTransportSkippedFrames = 0;
       pendingInputs.clear();
       io.append('match_start', {
         matchId, role: message.role, stage: message.stage, ownCharacter,
@@ -418,6 +420,7 @@ export function createOneMatchController(options, io) {
       const skippedFrames = Math.max(0, frameDelta - 1);
       totalStateFrames++;
       skippedStateFrames += skippedFrames;
+      pendingTransportSkippedFrames += skippedFrames;
       const newlyAcknowledged = [];
       for (let sequence = lastInputAck + 1; sequence <= ack; sequence++) {
         const pending = pendingInputs.get(sequence);
@@ -452,10 +455,12 @@ export function createOneMatchController(options, io) {
         return;
       }
       decisionInFlight = true;
+      const transportSkippedFrames = pendingTransportSkippedFrames;
+      pendingTransportSkippedFrames = 0;
       const rngBefore = options.rngState?.() ?? rngState;
       const decisionStartedNs = nowNs();
       try {
-        const result = await decidePolicy(message);
+        const result = await decidePolicy({ ...message, transportSkippedFrames });
         if (stopping || ending) {
           io.append('input_suppressed', {
             matchId, frame, reason: 'decision-completed-after-stop', stopping, ending,
@@ -482,6 +487,7 @@ export function createOneMatchController(options, io) {
       ending = true;
       const official = validateOfficialResult(await io.fetchOfficial(matchId), {
         matchId, handle: handleName, character,
+        engineVersion: options.engineVersion ?? options.expectedBuild?.split('@')[0],
         expectedOpponent: options.expectedOpponent,
         expectedOpponentCharacter: options.expectedOpponentCharacter,
       });
