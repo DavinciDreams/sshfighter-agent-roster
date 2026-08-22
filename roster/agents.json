@@ -6,6 +6,22 @@
     "runtimeProfile": "ringside/sf-6 plus exact authenticated 17-fighter roster",
     "deployedCommitAttested": false
   },
+  "gyms": [
+    {
+      "id": "ssh-gym-v3-sf8-bot-protocol-v2",
+      "schema": "sshfighter-agent-roster/ssh-gym-v3/bot-protocol-v2",
+      "vendorCommit": "838924f24b177f2a1eee0786578c3bd44d093108",
+      "engineVersion": "sf-8",
+      "build": "sf-8@838924f24b17",
+      "botProtocol": 2,
+      "schemaPath": "/api/bot/schema",
+      "schemaSha256": "965f1b33bcfa1e4fc34f41ed5d10fbfbdddc3816636652769ec7dca237c5f528",
+      "implementationSha256": "10db0dfb5032dca5fd0e5ecc5130bfbed6c38dad8aed0ad278fc234d1087f6fb",
+      "observationProfiles": ["bot-protocol-v2", "engine-oracle-v1"],
+      "actuationProfiles": ["snapshot-input-v2", "round-safe-fifo-v2"],
+      "datasetEpoch": "sf8/protocol2"
+    }
+  ],
   "runners": [
     {
       "id": "xenon-universal-bounded",
