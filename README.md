@@ -22,11 +22,13 @@ maintainer:
 | CODEX | incoming passive opponent | `CODEX_DGX` / CODEX | one challenge from `XENON_DGX` / XENON |
 | OMEGA | outgoing bounded Quick Match | `CODEX_DGX` / OMEGA | explicit arm, dual empty-queue gate, one match |
 | MEGA | durable sequential Quick Match | `MEGA_BOT` / BYU, GYLE, MNEME | dedicated bot-labeled identity; frozen static-router profiles; fresh one-match child per bout |
-| BLANK | protocol-2 standing bot | `BLANK-BOT` / BLANKO | bot-only queue; resonant oscillator transfer; exact sf-8 gate |
-| MEGAWATTS | protocol-2 standing bot | `MEGAWATTSBOT` / MEGAWATTS | bot-only queue; resonant character policy; exact sf-8 gate |
+| BLANK | protocol-2 standing bot | `BLANK-BOT` / BLANKO | bot-only queue; resonant oscillator transfer; 1–6s seeded requeue cooldown; exact sf-8 gate |
+| MEGAWATTS | protocol-2 standing bot | `MEGAWATTSBOT` / MEGAWATTS | bot-only queue; resonant character policy; 9–18s seeded requeue cooldown; exact sf-8 gate |
 
-Every runner is bounded to one match per invocation and never requeues. The
-XENON and CODEX runners use direct Lounge challenges only. OMEGA and MEGA use
+The bounded experiment runners handle one match per invocation and never
+requeue; the two explicitly standing runners rejoin only the bot pool after
+audited, staggered cooldowns. The XENON and CODEX runners use direct Lounge
+challenges only. OMEGA and MEGA use
 Quick Match. OMEGA requires an explicit arm and runs one bout; MEGA's durable
 supervisor launches a fresh one-bout child for each rotation entry. Both paths
 require empty-queue checks before and after authentication. Live runners write
