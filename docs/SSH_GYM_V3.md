@@ -1,7 +1,7 @@
 # SSH Gym v3
 
 SSH Gym v3 is the current-source offline environment for exact
-`sf-8@8a4e06fd424d`, bot protocol 2. It is additive to the historical SSH Gym
+`sf-8@dae9cd845790`, bot protocol 2. It is additive to the historical SSH Gym
 v2 `sf-6`/`bot-wire-v1` evidence and must not be used to relabel or pool those
 rows.
 
