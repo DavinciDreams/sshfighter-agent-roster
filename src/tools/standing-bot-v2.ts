@@ -312,6 +312,8 @@ export function createStandingController(
           mid, role, oppName: String(message.oppName),
           oppCharacter: PINNED_ROSTER[oppCursor], stage: String(message.stage),
         };
+        localSeq = 0;
+        lastAck = 0;
         lastFrame = -1;
         policy.reset();
         io.audit.beginMatch(mid, {

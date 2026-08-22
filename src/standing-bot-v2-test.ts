@@ -107,8 +107,16 @@ for (const agent of ['blank', 'megawatts'] as const) {
   assert.equal(h.scheduled.length, 1);
   h.scheduled[0]!();
   assert.deepEqual(h.sent.at(-1), { t: 'queue', char: AGENTS[agent].character, opponents: 'bots' });
+  await h.controller.handle({
+    t: 'matchStart', mid: 'm2', role: 'a', yourCursor: PINNED_ROSTER.indexOf(AGENTS[agent].character),
+    oppName: 'OPP', oppCursor: PINNED_ROSTER.indexOf('CODEX'), oppType: 'bot',
+    stage: 'dojo', ...exactBuild,
+  });
+  await h.controller.handle(state(agent, 1, 0));
+  assert.equal(h.controller.status().localSeq, 1, `${agent}: local sequence resets per match`);
+  assert.equal(h.controller.status().lastAck, 0, `${agent}: ACK baseline resets per match`);
 }
-console.log('PASS  BLANK and MEGAWATTS bind exact identities and send one complete snapshot per state');
+console.log('PASS  BLANK and MEGAWATTS bind exact identities, reset per-match ACK, and send complete snapshots');
 
 const noHuman = harness('blank');
 await noHuman.controller.handle({ t: 'hi', service: 'ringside-bot', ...exactBuild });

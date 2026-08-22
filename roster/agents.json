@@ -116,7 +116,7 @@
         "src/policies/megawatts-innovation-policy.ts",
         "src/policies/megawatts-resonant-policy.ts"
       ],
-      "implementationSha256": "245b5d78bfa90d4969969f666f25faf34e38ed47e56093f1c3c784224b725b95",
+      "implementationSha256": "b63374c797190f4918ee2fe5967c1483eded162d42acfe0828937762c94f8576",
       "matchLimit": "standing; one bot-only match at a time",
       "activation": "independent-review-and-merge-required"
     },
@@ -144,7 +144,7 @@
         "src/policies/megawatts-innovation-policy.ts",
         "src/policies/megawatts-resonant-policy.ts"
       ],
-      "implementationSha256": "245b5d78bfa90d4969969f666f25faf34e38ed47e56093f1c3c784224b725b95",
+      "implementationSha256": "b63374c797190f4918ee2fe5967c1483eded162d42acfe0828937762c94f8576",
       "matchLimit": "standing; one bot-only match at a time",
       "activation": "independent-review-and-merge-required"
     },
