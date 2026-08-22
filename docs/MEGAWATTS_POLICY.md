@@ -26,26 +26,24 @@ The stochastic controller records its 32-bit seed in `status()`. Supplying the
 same seed reproduces its actions, oscillator state, cue history summary, and
 strategy transitions.
 
-## Activation boundary
+## Protocol-2 activation boundary
 
-These are stored candidate artifacts, not live-enabled runner profiles. The
-live server now attests `sf-7@26591bce698d` and includes MEGAWATTS, while this
-repository deliberately retains the previously reviewed 17-fighter `sf-6`
-vendor checkout. Activation remains blocked until all of the following are
-reviewed together:
+The live server now attests exact clean `sf-8@838924f24b17`, bot protocol 2,
+and an 18-fighter roster including MEGAWATTS. The separate standing-runner
+change binds that exact schema and deployment. Activation remains review-gated
+until all of the following are reviewed together:
 
-1. the live MEGAWATTS implementation and attested runtime profile are reviewed;
-2. the roster's vendor submodule is updated to that exact reviewed source;
-3. a one-match runner binds MEGAWATTS plus the reviewed `compatibility_id` or
-   exact `profile_id` and records policy/configuration hashes;
-4. wire-delay and ACK behavior are evaluated separately from offline engine
+1. the exact sf-8 schema and source commit are reviewed (Gym v3 is a separate
+   profile rather than a relabel of the historical sf-6 Gym);
+2. the standing runner binds `MEGAWATTSBOT`, MEGAWATTS, protocol 2, bot-only
+   matchmaking, and records policy/configuration hashes;
+3. wire delay, frame gaps, and ACK depth are recorded separately from offline
    results; and
-5. any live bout is explicitly armed and predeclared under the normal
-   live-evaluation contract.
+4. the service units are enabled only from an independently approved merge.
 
-The existing durable MEGA supervisor remains on its frozen BYU/GYLE/MNEME
-static-router rotation. Adding these artifacts does not activate or modify that
-service.
+The existing durable MEGA supervisor remains stopped on its historical frozen
+BYU/GYLE/MNEME static-router rotation. The new `MEGAWATTSBOT` identity and unit
+do not activate or modify that service. See `STANDING_BOTS_V2.md`.
 
 ## Local verification
 

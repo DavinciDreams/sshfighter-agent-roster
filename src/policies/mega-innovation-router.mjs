@@ -95,6 +95,8 @@ function confirmedHit(previousHp, currentHp, opponent) {
 
 function projectileApproaching(state, self) {
   return (state.projectiles ?? []).some((projectile) => {
+    if (projectile.ownedBy !== undefined && projectile.ownedBy !== 'opponent') return false;
+    if (projectile.dangerous === false || projectile.canHit === false) return false;
     const dx = self.x - Number(projectile.x ?? self.x);
     return Math.abs(dx) < 82 && Math.sign(dx) === Math.sign(Number(projectile.vx ?? 0));
   });
@@ -356,10 +358,11 @@ export function createMegaInnovationPolicy(
       action.moveX = away; action.down = true;
       return { action, reason: 'pressure_projectile_guard' };
     }
-    if (profile.character === 'BLANKO' && opponent.y > 7 && distance < 64 && !opponent.active) {
+    if (profile.character === 'BLANKO' && opponent.y > 7 && distance < 64
+        && !(opponent.hitboxActive ?? opponent.active)) {
       return { action: blankoSpecial(self, 'vertical'), reason: 'pressure_blanko_vertical_anti_air' };
     }
-    if (opponent.active && distance < 48) {
+    if ((opponent.hitboxActive ?? opponent.active) && distance < 48) {
       action.moveX = away; action.down = true;
       return { action, reason: 'pressure_active_guard' };
     }

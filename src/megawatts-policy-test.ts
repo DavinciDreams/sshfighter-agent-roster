@@ -150,8 +150,8 @@ for (const id of ['megawatts-boundary-v1', 'megawatts-resonant-v1']) {
   const artifact = catalog.policyArtifacts?.find((candidate) => candidate.id === id);
   check(artifact?.implementationSha256 === hashFiles(artifact?.implementationFiles ?? []),
     `${id} catalog pins its complete implementation bytes`);
-  check(artifact?.activation === 'blocked-until-attested-megawatts-runtime',
-    `${id} cannot be presented as live-ready before the server profile is attested`);
+  check(artifact?.activation === 'review-gated-sf8-standing-runner',
+    `${id} remains independently review-gated after exact sf-8 attestation`);
 }
 
 console.log(`MEGAWATTS POLICY TEST: PASS (${checks} checks)`);

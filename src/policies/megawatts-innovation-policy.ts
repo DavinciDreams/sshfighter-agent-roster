@@ -24,6 +24,7 @@ export type MegawattsStrategy = 'survey' | 'bombard' | 'breach';
 export type MegawattsPolicyVariant = 'boundary' | 'resonant';
 
 export interface MegawattsFighterView {
+  character?: string;
   x: number;
   y: number;
   vx: number;
@@ -37,14 +38,28 @@ export interface MegawattsFighterView {
   crouching?: boolean;
   active?: boolean;
   casting?: boolean;
+  movePhase?: 'neutral' | 'startup' | 'active' | 'recovery';
+  hitboxActive?: boolean;
+  attackConnected?: boolean;
+  blocking?: boolean;
+  invulnerable?: boolean;
+  invulnerabilityFrames?: number;
+  armored?: boolean;
+  armorFrames?: number;
+  thrownFrames?: number;
+  actionable?: boolean;
   pose?: string;
 }
 
 export interface MegawattsProjectileView {
   owner?: 'a' | 'b';
+  ownedBy?: 'you' | 'opponent';
   x: number;
   y: number;
   vx: number;
+  vy?: number;
+  dangerous?: boolean;
+  canHit?: boolean;
   style?: string;
 }
 
@@ -449,14 +464,17 @@ export class MegawattsInnovationPolicy {
     const grounded = you.y <= 0.5 && you.vy <= 0;
     const ready = state.frame - this.lastActionFrame >= this.config.actionCooldown;
     const incoming = (state.projectiles ?? []).some((projectile) =>
-      Math.abs(projectile.x - you.x) < 76 && Math.sign(you.x - projectile.x) === Math.sign(projectile.vx));
+      (projectile.ownedBy === undefined || projectile.ownedBy === 'opponent')
+      && projectile.dangerous !== false && projectile.canHit !== false
+      && Math.abs(projectile.x - you.x) < 76
+      && Math.sign(you.x - projectile.x) === Math.sign(projectile.vx));
 
     if (incoming && grounded && distance < 70) {
       input.moveX = away;
       input.down = true;
       return input;
     }
-    if (opp.active && distance < 48 && grounded) {
+    if ((opp.hitboxActive ?? opp.active) && distance < 48 && grounded) {
       input.moveX = away;
       input.down = distance < 36;
       return input;
@@ -518,7 +536,8 @@ export class MegawattsInnovationPolicy {
     // predicted exit with Ground Truth, and cash out with normals/throws.
     if (distance <= 27 && ready) { input.throw = true; return this.commit(input, state.frame); }
     if (distance <= 43 && ready) { input.kick = true; return this.commit(input, state.frame); }
-    if (distance <= 70 && grounded && ready && (opp.casting || Math.sin(phase) > 0.35)) {
+    if (distance <= 70 && grounded && ready
+        && ((opp.movePhase === 'startup' && opp.attack !== 'none') || opp.casting || Math.sin(phase) > 0.35)) {
       return this.commit(special('groundtruth', you.facing), state.frame);
     }
     if (distance >= 48 && distance <= 86 && grounded && ready && Math.cos(phase) < -0.15) {

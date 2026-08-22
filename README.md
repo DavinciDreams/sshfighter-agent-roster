@@ -22,6 +22,8 @@ maintainer:
 | CODEX | incoming passive opponent | `CODEX_DGX` / CODEX | one challenge from `XENON_DGX` / XENON |
 | OMEGA | outgoing bounded Quick Match | `CODEX_DGX` / OMEGA | explicit arm, dual empty-queue gate, one match |
 | MEGA | durable sequential Quick Match | `MEGA_BOT` / BYU, GYLE, MNEME | dedicated bot-labeled identity; frozen static-router profiles; fresh one-match child per bout |
+| BLANK | protocol-2 standing bot | `BLANK-BOT` / BLANKO | bot-only queue; resonant oscillator transfer; exact sf-8 gate |
+| MEGAWATTS | protocol-2 standing bot | `MEGAWATTSBOT` / MEGAWATTS | bot-only queue; resonant character policy; exact sf-8 gate |
 
 Every runner is bounded to one match per invocation and never requeues. The
 XENON and CODEX runners use direct Lounge challenges only. OMEGA and MEGA use
@@ -96,11 +98,11 @@ exact clean server `build` and `commit` before entering matchmaking and checks
 them again at `matchStart`.
 
 The character-specific MEGAWATTS boundary and stochastic resonant controllers
-also live here as hash-pinned candidate artifacts, not in the game-server PR.
-The live server now attests `sf-7@26591bce698d`, whose roster includes
-MEGAWATTS, but those controllers remain activation-blocked until the vendored
-source is deliberately advanced and the promotion gate is reviewed. See
-`docs/MEGAWATTS_POLICY.md` for their mechanics, provenance, and promotion gate.
+also live here as hash-pinned agent-owned artifacts, not in the game-server PR.
+The standing runner binds the current exact sf-8/protocol-2 schema and uses the
+documented SSH `play` transport plus read-only REST preflight/result evidence.
+See `docs/MEGAWATTS_POLICY.md` for mechanics and `docs/STANDING_BOTS_V2.md` for
+the reviewed deployment and trace boundary.
 
 Identity files and ledgers are deliberately ignored by Git. Never commit
 tokens, SSH private keys, unreviewed connection metadata, raw private Lounge
