@@ -11,6 +11,10 @@ contract is the exact upstream `botApiSchema()` output served live at
 `/api/bot/schema`. Fighter identity, 0.01-quantized kinematics, move phase,
 hitbox state, actionability, guard/invulnerability/armor, and full projectile
 lifecycle and ownership are therefore identical to the reviewed live source.
+Facing is authoritative rather than perspective-normalized: the initial left
+seat is `1` (right-facing) and the initial right seat is `-1` (left-facing).
+Policies mirror absolute `L`/`R` motion suffixes from the current fighter
+`facing`, exactly as the machine schema specifies.
 
 `engine-oracle-v1` remains available only as an explicitly labeled diagnostic
 profile. It contains internal engine fields and is not live-observable training

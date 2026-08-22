@@ -53,6 +53,9 @@ check(reset.profile === 'bot-protocol-v2' && reset.a.you.character === 'BLANKO'
   && reset.b.opp.character === 'BLANKO', 'both seats receive self-contained perspective-local fighter identity');
 check(reset.a.frame === reset.b.frame && reset.a.ack === 0 && reset.b.ack === 0,
 'both perspectives bind the same authoritative state with independent ACK fields');
+check(reset.a.you.facing === 1 && reset.a.opp.facing === -1
+  && reset.b.you.facing === -1 && reset.b.opp.facing === 1,
+'initial seats face inward and each perspective preserves authoritative facing for motion mirroring');
 const after = gym.step({ n: 95, inputsA: { moveX: 1 }, inputsB: { moveX: -1 } }) as any;
 check(after.state.a.phase === 'fight' && after.state.a.ack === 95 && after.state.b.ack === 95,
 'one snapshot per simulated state advances authoritative ACKs');
