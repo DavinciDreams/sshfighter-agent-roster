@@ -92,14 +92,14 @@ for (const agent of ['blank', 'megawatts'] as const) {
   await enter(agent, h);
   assert.deepEqual(h.sent[0], { t: 'queue', char: AGENTS[agent].character, opponents: 'bots' });
   await h.controller.handle(state(agent, 1, 0));
-  await h.controller.handle(state(agent, 2, 0));
+  await h.controller.handle(state(agent, 2, 1));
   const inputs = h.sent.filter((row) => row.t === 'input');
   assert.equal(inputs.length, 2, `${agent}: one decision per state without ACK gating`);
   for (const input of inputs) {
     assert.deepEqual(Object.keys(input).sort(),
       ['down', 'jump', 'kick', 'motion', 'moveX', 'punch', 't', 'throw'].sort());
   }
-  assert.equal((h.audit.traces[1] as Message).unackedInputs, 2);
+  assert.equal((h.audit.traces[1] as Message).unackedInputs, 1);
   await h.controller.handle({
     t: 'matchEnd', result: { youWon: true, winner: AGENTS[agent].handle, loser: 'OPP' },
   });
@@ -115,15 +115,20 @@ for (const agent of ['blank', 'megawatts'] as const) {
   await h.controller.handle(state(agent, 1, 0));
   assert.equal(h.controller.status().localSeq, 3, `${agent}: local sequence remains connection-global`);
   assert.equal(h.controller.status().matchSeqBase, 2, `${agent}: match sequence baseline resets`);
+  assert.equal(h.controller.status().matchAckBase, 1, `${agent}: match ACK baseline uses prior high-water`);
   assert.equal(h.controller.status().lastAck, 0, `${agent}: ACK baseline resets per match`);
   assert.equal((h.audit.traces.at(-1) as Message).unackedInputs, 1,
     `${agent}: zero ACK is measured from the match baseline`);
-  await h.controller.handle(state(agent, 2, 3));
+  await h.controller.handle(state(agent, 2, 1));
   assert.equal(h.controller.status().localSeq, 4);
-  assert.equal(h.controller.status().lastAck, 3, `${agent}: global ACK resumes after first match input`);
-  assert.equal((h.audit.traces.at(-1) as Message).unackedInputs, 1);
+  assert.equal(h.controller.status().lastAck, 1, `${agent}: stale high-water ACK is valid in a new match`);
+  assert.equal((h.audit.traces.at(-1) as Message).unackedInputs, 2);
+  await h.controller.handle(state(agent, 3, 2));
+  assert.equal(h.controller.status().connectionAckHighWater, 2,
+    `${agent}: server ACK advances independently of client send count`);
+  assert.equal((h.audit.traces.at(-1) as Message).unackedInputs, 2);
 }
-console.log('PASS  BLANK and MEGAWATTS bind identities and reconcile global sequence with per-match ACK zero');
+console.log('PASS  BLANK and MEGAWATTS reconcile client sends with global server ACK across matches');
 
 const noHuman = harness('blank');
 await noHuman.controller.handle({ t: 'hi', service: 'ringside-bot', ...exactBuild });

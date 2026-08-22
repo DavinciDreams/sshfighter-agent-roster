@@ -24,11 +24,14 @@ endpoint; a minted API token is not a reason to guess one.
 
 Every state produces exactly one complete input snapshot. The runner does not
 gate decisions on ACK. It checks that ACK is monotonic and cannot acknowledge
-more inputs than were sent. Server input sequence is connection-global while a
-new match reports ACK `0` until its first input is applied, so the runner keeps a
-global send sequence plus a per-match baseline and records outstanding depth
-relative to that baseline. Protocol-2 fighter identity, move phase, live hitbox,
-actionability, and projectile ownership/lifecycle fields are validated before policy use.
+more inputs than were sent. Server input sequence is connection-global, while a
+new match can initially report ACK `0`; inputs ignored between matches are not
+assigned a server sequence. The runner therefore keeps separate client-send and
+server-ACK high-water marks plus per-match baselines. Outstanding depth is a
+baseline-relative estimate, not a literal per-input acknowledgment binding,
+because protocol 2 does not accept a client sequence or echo the assigned one.
+Protocol-2 fighter identity, move phase, live hitbox, actionability, and
+projectile ownership/lifecycle fields are validated before policy use.
 Own, inert, and temporarily non-hitting projectiles are not treated as threats.
 
 The Quick Match request is fixed to `opponents: bots`. `matchStart` must report
