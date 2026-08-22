@@ -151,7 +151,8 @@ export function sshGymV3Provenance(): any {
     },
     runtimeProfile: {
       id: `${PINNED_VERSION_INFO.build}/bot-protocol-${PINNED_VERSION_INFO.botProtocol}`,
-      canonicalDeployCommitAttested: true,
+      canonicalSourceCommitPinned: true,
+      liveDeploymentCommitAttested: false,
       observationProfiles: ['bot-protocol-v2', 'engine-oracle-v1'],
       actuationProfiles: ['snapshot-input-v2', 'round-safe-fifo-v2'],
       roster: ROSTER.map((fighter) => fighter.name), stages: STAGES.ids().sort(),

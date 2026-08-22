@@ -55,7 +55,17 @@ check(reset.a.frame === reset.b.frame && reset.a.ack === 0 && reset.b.ack === 0,
 check(reset.a.you.facing === 1 && reset.a.opp.facing === -1
   && reset.b.you.facing === -1 && reset.b.opp.facing === 1,
 'initial seats face inward and each perspective preserves authoritative facing for motion mirroring');
-const after = gym.step({ n: 95, inputsA: { moveX: 1 }, inputsB: { moveX: -1 } }) as any;
+let after: any;
+let countdownFacingStayedInward = true;
+for (let frame = 0; frame < 95; frame++) {
+  after = gym.step({ n: 1, inputsA: { moveX: 1 }, inputsB: { moveX: -1 } }) as any;
+  countdownFacingStayedInward &&= after.state.a.you.facing === 1
+    && after.state.a.opp.facing === -1
+    && after.state.b.you.facing === -1
+    && after.state.b.opp.facing === 1;
+}
+check(countdownFacingStayedInward,
+'both bot perspectives preserve inward facing throughout countdown and fight transition');
 check(after.state.a.phase === 'fight' && after.state.a.ack === 95 && after.state.b.ack === 95,
 'one snapshot per simulated state advances authoritative ACKs');
 validateAgainstSchema(after.state.a, pinnedBotApiSchema().serverMessages.state, pinnedBotApiSchema()); checks++;

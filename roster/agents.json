@@ -10,13 +10,13 @@
     {
       "id": "ssh-gym-v3-sf8-bot-protocol-v2",
       "schema": "sshfighter-agent-roster/ssh-gym-v3/bot-protocol-v2",
-      "vendorCommit": "838924f24b177f2a1eee0786578c3bd44d093108",
+      "vendorCommit": "8a4e06fd424d566fe11bf2202850e0ee9741c89a",
       "engineVersion": "sf-8",
-      "build": "sf-8@838924f24b17",
+      "build": "sf-8@8a4e06fd424d",
       "botProtocol": 2,
       "schemaPath": "/api/bot/schema",
-      "schemaSha256": "965f1b33bcfa1e4fc34f41ed5d10fbfbdddc3816636652769ec7dca237c5f528",
-      "implementationSha256": "cffeb76ca6cb83de63ab541f3a7924e337f6f7602def91d3fd6dbae5aa67b545",
+      "schemaSha256": "735eea494e93c00377a4a34ff803d9d73a7b77a939a3e65b7fafdf927cf07f42",
+      "implementationSha256": "98cdd7bd7027703bff150ec29a133c83840052a4444828b3c63d42fba4f51673",
       "observationProfiles": ["bot-protocol-v2", "engine-oracle-v1"],
       "actuationProfiles": ["snapshot-input-v2", "round-safe-fifo-v2"],
       "datasetEpoch": "sf8/protocol2"
