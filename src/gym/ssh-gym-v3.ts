@@ -11,7 +11,6 @@ import { specialMoveMotionCode, specialMovesFor } from '../../vendor/sshfighter-
 import { ROSTER } from '../../vendor/sshfighter-sf8/src/game/roster.js';
 import { STAGES } from '../../vendor/sshfighter-sf8/src/game/stage-set.js';
 import { emptyInputs, type Inputs, type Match } from '../../vendor/sshfighter-sf8/src/game/types.js';
-import { VERSION_INFO } from '../../vendor/sshfighter-sf8/src/version.js';
 import {
   PINNED_BOT_PROTOCOL, PINNED_BUILD, PINNED_ENGINE_VERSION, PINNED_ROSTER,
   PINNED_SCHEMA_PATH, PINNED_SCHEMA_SHA256, PINNED_VENDOR_COMMIT,
@@ -45,6 +44,28 @@ export const canonicalJson = (value: unknown): string => JSON.stringify(value, (
     .sort(([a], [b]) => a.localeCompare(b)));
 });
 const git = (...args: string[]): string => execFileSync('git', args, { encoding: 'utf8' }).trim();
+const PINNED_VERSION_INFO = Object.freeze({
+  engine: PINNED_ENGINE_VERSION,
+  commit: PINNED_VENDOR_COMMIT,
+  commitShort: PINNED_VENDOR_COMMIT.slice(0, 12),
+  dirty: false,
+  build: PINNED_BUILD,
+  api: 1,
+  botProtocol: PINNED_BOT_PROTOCOL,
+});
+
+/**
+ * Upstream resolves deployment identity from environment variables such as
+ * GITHUB_SHA. Inside this superproject those variables identify the agent repo,
+ * not the pinned game submodule. Normalize only the generated version block
+ * after the submodule commit/files have been verified, so Gym schema identity
+ * cannot be contaminated by its host CI or deployment environment.
+ */
+export function pinnedBotApiSchema(): any {
+  const schema = structuredClone(botApiSchema()) as any;
+  schema.generatedFor = { ...PINNED_VERSION_INFO };
+  return schema;
+}
 
 export function normalizeSnapshotInput(command: GymInput | undefined): Inputs {
   const raw = command ?? {};
@@ -111,7 +132,7 @@ export function sshGymV3Provenance(): any {
   const implementationFiles = Object.fromEntries(IMPLEMENTATION_FILES.map((relative) => [
     relative, sha256File(resolve(sourceRoot, relative)),
   ]));
-  const schemaSha256 = sha256(canonicalJson(botApiSchema()));
+  const schemaSha256 = sha256(canonicalJson(pinnedBotApiSchema()));
   return {
     schema: SSH_GYM_V3_SCHEMA,
     implementationSha256: sha256(canonicalJson(implementationFiles)),
@@ -123,12 +144,13 @@ export function sshGymV3Provenance(): any {
       repository: 'https://github.com/thomasdavis/sshfighter.com.git',
       commit: git('-C', vendorRoot, 'rev-parse', 'HEAD'),
       dirty: git('-C', vendorRoot, 'status', '--porcelain', '--untracked-files=no') !== '',
-      engine: VERSION_INFO.engine, build: VERSION_INFO.build, botProtocol: VERSION_INFO.botProtocol,
+      engine: PINNED_VERSION_INFO.engine, build: PINNED_VERSION_INFO.build,
+      botProtocol: PINNED_VERSION_INFO.botProtocol,
       schemaPath: PINNED_SCHEMA_PATH, schemaSha256, files,
       combinedSourceSha256: sha256(canonicalJson(files)),
     },
     runtimeProfile: {
-      id: `${VERSION_INFO.build}/bot-protocol-${VERSION_INFO.botProtocol}`,
+      id: `${PINNED_VERSION_INFO.build}/bot-protocol-${PINNED_VERSION_INFO.botProtocol}`,
       canonicalDeployCommitAttested: true,
       observationProfiles: ['bot-protocol-v2', 'engine-oracle-v1'],
       actuationProfiles: ['snapshot-input-v2', 'round-safe-fifo-v2'],
@@ -179,7 +201,7 @@ export class SshGymV3 {
   state(): object {
     const match = this.requireMatch();
     if (this.observationProfile === 'engine-oracle-v1') return oracle(match);
-    const schema = botApiSchema() as any;
+    const schema = pinnedBotApiSchema();
     const a = botStateFor('a', match, this.ackA);
     const b = botStateFor('b', match, this.ackB);
     validateAgainstSchema(a, schema.serverMessages.state, schema);
@@ -187,7 +209,7 @@ export class SshGymV3 {
     return { profile: 'bot-protocol-v2', a, b };
   }
   version(): object { return { schema: SSH_GYM_V3_SCHEMA, provenance: assertSshGymV3Provenance(), transportClaim: 'none-offline-live-observation-parity' }; }
-  schema(): object { assertSshGymV3Provenance(); return botApiSchema(); }
+  schema(): object { assertSshGymV3Provenance(); return pinnedBotApiSchema(); }
   roster(): object[] {
     return ROSTER.map((fighter) => ({ name: fighter.name, specials: specialMovesFor(fighter.name).map((move) => ({
       attack: move.attack, button: move.button,

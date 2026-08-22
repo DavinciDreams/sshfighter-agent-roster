@@ -5,12 +5,11 @@ import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 
-import { botApiSchema } from '../vendor/sshfighter-sf8/src/api/bot-schema.js';
 import { botStateFor } from '../vendor/sshfighter-sf8/src/api/bot-server.js';
 import { makeFighter, makeMatch, stepMatch } from '../vendor/sshfighter-sf8/src/game/engine.js';
 import { emptyInputs, type Inputs } from '../vendor/sshfighter-sf8/src/game/types.js';
 import {
-  RoundSafeSnapshotFifo, SshGymV3, canonicalJson, normalizeSnapshotInput,
+  RoundSafeSnapshotFifo, SshGymV3, canonicalJson, normalizeSnapshotInput, pinnedBotApiSchema,
   validateAgainstSchema, assertSshGymV3Provenance,
 } from './gym/ssh-gym-v3.js';
 import {
@@ -30,7 +29,7 @@ check(provenance.schema === SSH_GYM_V3_SCHEMA
 check(provenance.vendor.build === PINNED_BUILD && provenance.vendor.botProtocol === PINNED_BOT_PROTOCOL,
 'Gym v3 pins exact sf-8 build and protocol 2');
 check(provenance.vendor.schemaSha256 === PINNED_SCHEMA_SHA256
-  && createHash('sha256').update(canonicalJson(botApiSchema())).digest('hex') === PINNED_SCHEMA_SHA256,
+  && createHash('sha256').update(canonicalJson(pinnedBotApiSchema())).digest('hex') === PINNED_SCHEMA_SHA256,
 'canonical machine-readable bot schema digest recomputes exactly');
 
 const snapshot = normalizeSnapshotInput({ moveX: 1, punch: true });
@@ -59,8 +58,8 @@ check(reset.a.you.facing === 1 && reset.a.opp.facing === -1
 const after = gym.step({ n: 95, inputsA: { moveX: 1 }, inputsB: { moveX: -1 } }) as any;
 check(after.state.a.phase === 'fight' && after.state.a.ack === 95 && after.state.b.ack === 95,
 'one snapshot per simulated state advances authoritative ACKs');
-validateAgainstSchema(after.state.a, (botApiSchema() as any).serverMessages.state, botApiSchema()); checks++;
-validateAgainstSchema(after.state.b, (botApiSchema() as any).serverMessages.state, botApiSchema()); checks++;
+validateAgainstSchema(after.state.a, pinnedBotApiSchema().serverMessages.state, pinnedBotApiSchema()); checks++;
+validateAgainstSchema(after.state.b, pinnedBotApiSchema().serverMessages.state, pinnedBotApiSchema()); checks++;
 
 const detailed = makeMatch(makeFighter('a', 'MNEME', 'a'), makeFighter('b', 'XENON', 'b'));
 for (let index = 0; index < 95; index++) stepMatch(detailed, neutral(), neutral());
@@ -86,8 +85,8 @@ check(typeof seatA.you.actionable === 'boolean' && typeof seatA.you.blocking ===
   && typeof seatA.you.invulnerable === 'boolean' && typeof seatA.you.armored === 'boolean'
   && ['neutral', 'startup', 'active', 'recovery'].includes(seatA.you.movePhase),
 'actionability, guard, invulnerability, armor, and move phase are live-observable');
-validateAgainstSchema(seatA, (botApiSchema() as any).serverMessages.state, botApiSchema()); checks++;
-validateAgainstSchema(seatB, (botApiSchema() as any).serverMessages.state, botApiSchema()); checks++;
+validateAgainstSchema(seatA, pinnedBotApiSchema().serverMessages.state, pinnedBotApiSchema()); checks++;
+validateAgainstSchema(seatB, pinnedBotApiSchema().serverMessages.state, pinnedBotApiSchema()); checks++;
 
 const oracleGym = new SshGymV3();
 const oracle = oracleGym.reset({
