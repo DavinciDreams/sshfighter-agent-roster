@@ -31,7 +31,7 @@ it remains a historical control.
   roster with `MEGAWATTS` immediately before `UNCLOSE`, plus matching build
   fields in both authenticated `welcome` and `matchStart` messages.
 - Both runtime source snapshots and their mechanics/bot-protocol digests are
-  read from a dedicated commit-pinned compatibility submodule. A bare `sf-6`
+  read from dedicated commit-pinned compatibility submodules. A bare `sf-6`
   or `sf-7` label never selects a profile.
 - Every bout executes in a new one-match child and a new exclusive mode-0600
   ledger. The child never requeues.

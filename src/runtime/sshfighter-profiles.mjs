@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,8 +38,8 @@ export const SSHFIGHTER_RUNTIME_PROFILES = Object.freeze([
     api: null,
     botProtocol: null,
     roster: SF6_ROSTER,
-    vendorPath: 'vendor/sshfighter-sf7',
-    vendorCheckoutCommit: '26591bce698dad4516d59614feee67cc6d636572',
+    vendorPath: 'vendor/sshfighter-sf6',
+    vendorCheckoutCommit: 'ece81777886d479f3e61ed74b0e05b20884ce386',
     implementationSha256: '61aa12185891690f3c49efe2db1fd4ac728ea021081afe7f38ae337271412e3f',
     attestation: 'public exact health build plus exact authenticated ordered roster',
   }),
@@ -58,11 +59,11 @@ export const SSHFIGHTER_RUNTIME_PROFILES = Object.freeze([
   }),
 ]);
 
-function hashProfileFiles(root, commit, files = RUNTIME_PROFILE_FILES) {
+function hashProfileFiles(root, files = RUNTIME_PROFILE_FILES) {
   const digest = createHash('sha256');
   for (const relative of files) {
     digest.update(relative).update('\0');
-    try { digest.update(execFileSync('git', ['show', `${commit}:${relative}`], { cwd: root })); }
+    try { digest.update(readFileSync(resolve(root, relative))); }
     catch { digest.update('[ABSENT]'); }
     digest.update('\0');
   }
@@ -75,7 +76,7 @@ export function verifyRuntimeProfileSource(profile) {
   if (commit !== profile.vendorCheckoutCommit) {
     throw new Error(`${profile.id} vendor commit mismatch: expected ${profile.vendorCheckoutCommit}, got ${commit}`);
   }
-  const implementationSha256 = hashProfileFiles(root, profile.commit);
+  const implementationSha256 = hashProfileFiles(root);
   if (implementationSha256 !== profile.implementationSha256) {
     throw new Error(`${profile.id} implementation hash mismatch: expected ${profile.implementationSha256}, got ${implementationSha256}`);
   }

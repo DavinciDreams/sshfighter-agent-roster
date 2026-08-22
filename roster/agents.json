@@ -54,7 +54,7 @@
       "supervisorSourceSha256": "32c462f3d002cb332f3c02e6088013939fde6c0b135bde10552d027f9c60fa40",
       "policyModuleSha256": "79a73115877331c190841b83c03d53dbb6616dc90262a075d1a87b5c59db7674",
       "sharedTransportSha256": "a7a0ec87874ca0f74eb7f5a36b7d6d9e147eea30924c6de0c98f8452c2cf224c",
-      "runtimeProfileModuleSha256": "1897c8d89c8dd7a330e0059f7dc97d9a013472c9caa202602cbfeb07473cda12",
+      "runtimeProfileModuleSha256": "0d62e8de4c5f429b7f10c77c06c0ec36d2623f1dc126c67b2152f1476e2ccf4d",
       "runtimeProfiles": [
         "sf6-ece8177-current17",
         "sf7-26591bc-megawatts18"
