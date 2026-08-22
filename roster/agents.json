@@ -34,7 +34,7 @@
       "transport": "quick-match-outgoing",
       "entrypoint": "src/tools/codex-dgx-omega-quickmatch.mjs",
       "test": "test:omega-quickmatch",
-      "runnerSourceSha256": "af90aec6115fc109226e9ea07208324c4b2b98faa0d99b9619a89a2a9af47d69",
+      "runnerSourceSha256": "2b5a109ac946c87f8c98b29f59d01758a3733b1c989cbdff93bcd67cdab88f6d",
       "policyFunctionSha256": "ab9b903e9ba74b046b1439adccfedc33224c8ed247355335931f026018f86497",
       "maxMatches": 1
     },
@@ -50,10 +50,10 @@
       "entrypoint": "src/tools/durable-quickmatch-supervisor.mjs",
       "oneMatchChild": "src/tools/static-router-quickmatch.mjs",
       "test": "test:static-router-quickmatch",
-      "childRunnerSourceSha256": "b380b09e3019552fbf2c5b7cb6a0b6fed55832c6e4b1afb572b7c334f5d475f4",
+      "childRunnerSourceSha256": "d3c7c33259ac6810bd5916eeaf38c4e7e5b25951c08914193573496617dcee86",
       "supervisorSourceSha256": "32c462f3d002cb332f3c02e6088013939fde6c0b135bde10552d027f9c60fa40",
       "policyModuleSha256": "79a73115877331c190841b83c03d53dbb6616dc90262a075d1a87b5c59db7674",
-      "sharedTransportSha256": "af90aec6115fc109226e9ea07208324c4b2b98faa0d99b9619a89a2a9af47d69",
+      "sharedTransportSha256": "2b5a109ac946c87f8c98b29f59d01758a3733b1c989cbdff93bcd67cdab88f6d",
       "staticRouterWeightSha256": "ee1f5ffcb83b878bb02ce0c5b659f91a6b5b988ad971912972f9b0605b74ac4f",
       "maxMatchesPerChild": 1,
       "supervisorMatchLimit": "operator-configured; 0 means durable"

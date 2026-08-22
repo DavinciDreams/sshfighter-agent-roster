@@ -89,3 +89,11 @@ requires a separately coordinated opponent, explicit consent, an exact
 character/profile binding, a fresh ledger path, and the runner's one-match
 bound. Results are transport evidence unless an efficacy experiment was
 separately predeclared.
+
+Predeclared efficacy blocks follow the
+[live evaluation contract](docs/LIVE_EVALUATION.md): exact opponent/profile
+targeting, policy or checkpoint provenance bound to official match IDs, and
+monotonic decision/ACK telemetry. Exact efficacy targeting requires a
+coordinated direct Lounge challenge. The Quick Match target guard only rejects
+combat/evidence after pairing and can create an official forfeit; it is not a
+targeting mechanism or a substitute for an unavailable target.

@@ -9,7 +9,7 @@ import readline from 'node:readline';
 import {
   PINNED_ROSTER, RUNNER_SCHEMA as CONTROL_SCHEMA,
   assertStrictQueueEmpty, createBoundedTransportSession, createExclusiveLedger,
-  validatePinnedRoster, verifyVendorProvenance,
+  validateOfficialResult, validatePinnedRoster, verifyVendorProvenance,
 } from './codex-dgx-omega-quickmatch.mjs';
 import {
   DEFAULT_POLICY_SEED, DURABLE_PROFILES, STATIC_ROUTER_HF_REVISION,
@@ -17,7 +17,7 @@ import {
   staticProfile,
 } from '../policies/static-router-gym.mjs';
 
-export const RUNNER_SCHEMA = 'sshfighter-agent-roster/mega-quickmatch/v1';
+export const RUNNER_SCHEMA = 'sshfighter-agent-roster/mega-quickmatch/v2';
 export const SOURCE_FILE = fileURLToPath(import.meta.url);
 export const DEFAULT_HANDLE = 'MEGA_BOT';
 
@@ -25,7 +25,8 @@ export function parseArgs(argv) {
   const values = {};
   let armed = false, dryRun = false;
   const allowed = new Set([
-    'identity', 'handle', 'expected-fingerprint', 'out', 'host', 'window-ms', 'profile', 'seed',
+    'identity', 'handle', 'expected-fingerprint', 'expected-opponent',
+    'expected-opponent-character', 'out', 'host', 'window-ms', 'profile', 'seed',
   ]);
   for (let index = 0; index < argv.length; index++) {
     const raw = argv[index];
@@ -52,10 +53,19 @@ export function parseArgs(argv) {
   if (values['expected-fingerprint'] && !/^SHA256:[A-Za-z0-9+/=]+$/.test(values['expected-fingerprint'])) {
     throw new Error('--expected-fingerprint must be an SHA256 SSH fingerprint');
   }
+  if (Boolean(values['expected-opponent']) !== Boolean(values['expected-opponent-character'])) {
+    throw new Error('--expected-opponent and --expected-opponent-character must be provided together');
+  }
+  if (values['expected-opponent-character']
+      && !PINNED_ROSTER.includes(values['expected-opponent-character'])) {
+    throw new Error('--expected-opponent-character must be in the pinned roster');
+  }
   return {
     armed, dryRun, profile, identity: values.identity,
     handle: values.handle ?? DEFAULT_HANDLE,
     expectedFingerprint: values['expected-fingerprint'] ?? '',
+    expectedOpponent: values['expected-opponent'],
+    expectedOpponentCharacter: values['expected-opponent-character'],
     out: values.out, host: values.host ?? 'sshfighter.com', windowMs, seed,
   };
 }
@@ -84,17 +94,12 @@ function runnerProvenance() {
   };
 }
 
-export function validateOfficial(payload, mid, character, handle = DEFAULT_HANDLE) {
-  const match = payload?.match;
-  if (!match || match.id !== mid || match.mode !== 'versus' || match.engine_version !== 'sf-6')
-    throw new Error('official result identity, mode, or engine mismatch');
-  const ownA = match.a_name === handle && match.a_char === character;
-  const ownB = match.b_name === handle && match.b_char === character;
-  if (ownA === ownB || !['ko', 'time'].includes(match.end_reason)
-      || !['a', 'b'].includes(match.winner)
-      || !Number.isInteger(match.a_rounds) || !Number.isInteger(match.b_rounds))
-    throw new Error('official result is not a clean uniquely bound completion');
-  return payload;
+export function validateOfficial(payload, mid, character, handle = DEFAULT_HANDLE, target = {}) {
+  return validateOfficialResult(payload, {
+    matchId: mid, handle, character,
+    expectedOpponent: target.handle,
+    expectedOpponentCharacter: target.character,
+  });
 }
 
 export async function run(args) {
@@ -118,6 +123,8 @@ export async function run(args) {
     exactRoster: [...PINNED_ROSTER],
     maxMatches: 1,
     queueWindowMs: args.windowMs,
+    expectedOpponent: args.expectedOpponent ?? null,
+    expectedOpponentCharacter: args.expectedOpponentCharacter ?? null,
     dryRun: args.dryRun,
   };
   if (args.dryRun) {
@@ -152,6 +159,8 @@ export async function run(args) {
     character: args.profile.character,
     handle: args.handle,
     expectedFingerprint: args.expectedFingerprint,
+    expectedOpponent: args.expectedOpponent,
+    expectedOpponentCharacter: args.expectedOpponentCharacter,
     decide: policy.decide,
     reset: policy.reset,
     rngState: policy.rngState,
@@ -173,6 +182,7 @@ export async function run(args) {
           return validateOfficial(
             await fetchJson(`https://${args.host}/api/matches/${encodeURIComponent(mid)}`),
             mid, args.profile.character, args.handle,
+            { handle: args.expectedOpponent, character: args.expectedOpponentCharacter },
           );
         }
         catch (error) {
