@@ -28,13 +28,17 @@ strategy transitions.
 
 ## Protocol-2 activation boundary
 
-The live server now attests exact clean `sf-8@68218a463e63`, bot protocol 2,
-and an 18-fighter roster including MEGAWATTS. The separate standing-runner
-change binds that exact schema and deployment. Activation remains review-gated
-until all of the following are reviewed together:
+The reviewed live baseline is clean `sf-8@68218a463e63`, bot protocol 2, and an
+18-fighter roster including MEGAWATTS. The separate standing runner derives the
+active commit and binds it across public preflight, authenticated transport,
+and official results while requiring the reviewed semantic-schema hash.
+Compatible unreviewed commits may continue playing, but their traces are
+commit-partitioned and quarantined from training pending runtime review.
+Activation remains review-gated until all of the following are reviewed
+together:
 
-1. the exact sf-8 schema and source commit are reviewed (Gym v3 is a separate
-   profile rather than a relabel of the historical sf-6 Gym);
+1. the sf-8 semantic schema and baseline source commit are reviewed (Gym v3 is
+   a separate profile rather than a relabel of the historical sf-6 Gym);
 2. the standing runner binds `MEGAWATTSBOT`, MEGAWATTS, protocol 2, bot-only
    matchmaking, and records policy/configuration hashes;
 3. wire delay, frame gaps, and ACK depth are recorded separately from offline

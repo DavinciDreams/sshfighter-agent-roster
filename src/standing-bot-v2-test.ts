@@ -3,11 +3,14 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  AGENTS, EXPECTED_BUILD, EXPECTED_COMMIT, EXPECTED_ENGINE, EXPECTED_PROTOCOL,
-  EXPECTED_SCHEMA_PATH, PINNED_ROSTER, createPolicyBinding, createStandingController,
+  AGENTS, EXPECTED_ENGINE, EXPECTED_PROTOCOL, EXPECTED_SCHEMA_PATH, PINNED_ROSTER,
+  EXPECTED_SCHEMA_COMPATIBILITY_SHA256, REVIEWED_BASELINE_BUILD,
+  REVIEWED_BASELINE_COMMIT, REVIEWED_BASELINE_SCHEMA_SHA256, classifyRuntime,
+  createPolicyBinding, createStandingController,
   computeRequeueDelayMs, computeRunnerImplementationHash, normalizeInput, parseArgs,
-  validateOfficial, validatePreflight,
-  type AgentId, type AuditSink, type RunnerOptions,
+  runtimeDataBoundary, schemaCompatibilityView, sha256, stable, validateOfficial,
+  validatePreflight,
+  type AgentId, type AuditSink, type RunnerOptions, type RuntimeAttestation,
 } from './tools/standing-bot-v2.js';
 
 type Message = Record<string, unknown>;
@@ -23,8 +26,14 @@ class MemoryAudit implements AuditSink {
 }
 
 const exactBuild = {
-  engine: EXPECTED_ENGINE, commit: EXPECTED_COMMIT, dirty: false,
-  build: EXPECTED_BUILD, protocol: EXPECTED_PROTOCOL, schema: EXPECTED_SCHEMA_PATH,
+  engine: EXPECTED_ENGINE, commit: REVIEWED_BASELINE_COMMIT, dirty: false,
+  build: REVIEWED_BASELINE_BUILD, protocol: EXPECTED_PROTOCOL, schema: EXPECTED_SCHEMA_PATH,
+};
+const runtime: RuntimeAttestation = {
+  engine: EXPECTED_ENGINE, commit: REVIEWED_BASELINE_COMMIT,
+  build: REVIEWED_BASELINE_BUILD, protocol: EXPECTED_PROTOCOL,
+  schemaSha256: REVIEWED_BASELINE_SCHEMA_SHA256,
+  schemaCompatibilitySha256: EXPECTED_SCHEMA_COMPATIBILITY_SHA256,
 };
 
 const fighter = (character: string, overrides: Message = {}): Message => ({
@@ -52,7 +61,7 @@ function official(agent: AgentId, mid = 'm1'): Message {
   const binding = AGENTS[agent];
   return { match: {
     id: mid, mode: 'versus', engine_version: EXPECTED_ENGINE,
-    engine_commit: EXPECTED_COMMIT, engine_dirty: 0,
+    engine_commit: REVIEWED_BASELINE_COMMIT, engine_dirty: 0,
     a_name: binding.handle, a_char: binding.character, a_is_bot: 1,
     b_name: 'OPP', b_char: 'CODEX', b_is_bot: 1,
     winner: 'a', a_rounds: 2, b_rounds: 0, end_reason: 'ko',
@@ -70,7 +79,7 @@ function harness(agent: AgentId) {
     fetchOfficial: async (mid) => official(agent, mid),
     schedule: (fn, delayMs) => { scheduled.push({ fn, delayMs }); return scheduled.length; },
     nowNs: () => { clock += 100n; return clock; },
-  });
+  }, runtime);
   return { controller, sent, scheduled, audit, isClosed: () => closed };
 }
 
@@ -102,6 +111,11 @@ for (const agent of ['blank', 'megawatts'] as const) {
       ['down', 'jump', 'kick', 'motion', 'moveX', 'punch', 't', 'throw'].sort());
   }
   assert.equal((h.audit.traces[1] as Message).unackedInputs, 1);
+  const matchManifest = h.audit.rows.find((row) => row.event === 'begin:m1')?.payload as Message;
+  assert.equal(matchManifest.commit, REVIEWED_BASELINE_COMMIT);
+  assert.equal(matchManifest.schemaSha256, REVIEWED_BASELINE_SCHEMA_SHA256);
+  assert.equal(matchManifest.runtimeAlignment, 'reviewed-baseline');
+  assert.equal(matchManifest.trainingEligibility, 'reviewed-runtime');
   await h.controller.handle({
     t: 'matchEnd', result: { youWon: true, winner: AGENTS[agent].handle, loser: 'OPP' },
   });
@@ -150,6 +164,19 @@ await assert.rejects(noHuman.controller.handle({
 assert.equal(noHuman.sent.some((row) => row.t === 'input'), false);
 console.log('PASS  human pairings and incomplete match bindings fail before combat input');
 
+const runtimeChanged = harness('blank');
+await runtimeChanged.controller.handle({ t: 'hi', service: 'ringside-bot', ...exactBuild });
+const driftCommit = '1234567890abcdef1234567890abcdef12345678';
+await assert.rejects(runtimeChanged.controller.handle({
+  t: 'welcome', name: AGENTS.blank.handle, fp: AGENTS.blank.fingerprint,
+  roster: [...PINNED_ROSTER], channel: 'bot-api', playerType: 'bot',
+  engine: EXPECTED_ENGINE, commit: driftCommit, dirty: false,
+  build: `${EXPECTED_ENGINE}@${driftCommit.slice(0, 12)}`,
+  protocol: EXPECTED_PROTOCOL, schema: EXPECTED_SCHEMA_PATH,
+}), /changed after preflight/);
+assert.equal(runtimeChanged.sent.some((row) => row.t === 'queue'), false);
+console.log('PASS  transport attestation cannot change after the API-derived preflight commit');
+
 const protocol = harness('megawatts');
 await enter('megawatts', protocol);
 await assert.rejects(protocol.controller.handle(state('megawatts', 1, 0, {
@@ -172,14 +199,18 @@ console.log('PASS  stop suppresses combat input and closes only after leave ackn
 const binding = AGENTS.megawatts;
 const valid = official('megawatts');
 assert.equal(validateOfficial(valid, 'm1', binding, {
-  role: 'a', oppName: 'OPP', oppCharacter: 'CODEX',
+  role: 'a', oppName: 'OPP', oppCharacter: 'CODEX', runtimeCommit: runtime.commit,
 }), valid);
 assert.throws(() => validateOfficial({ match: {
   ...(valid.match as Message), engine_commit: 'wrong',
-} }, 'm1', binding, { role: 'a', oppName: 'OPP', oppCharacter: 'CODEX' }), /exact sf-8/);
+} }, 'm1', binding, {
+  role: 'a', oppName: 'OPP', oppCharacter: 'CODEX', runtimeCommit: runtime.commit,
+}), /attested sf-8/);
 assert.throws(() => validateOfficial({ match: {
   ...(valid.match as Message), b_is_bot: 0,
-} }, 'm1', binding, { role: 'a', oppName: 'OPP', oppCharacter: 'CODEX' }), /bot-pool/);
+} }, 'm1', binding, {
+  role: 'a', oppName: 'OPP', oppCharacter: 'CODEX', runtimeCommit: runtime.commit,
+}), /bot-pool/);
 console.log('PASS  official evidence binds exact engine, identities, characters, and bot pool');
 
 assert.deepEqual(normalizeInput({ t: 'input', moveX: 9, punch: 1 }), {
@@ -219,20 +250,78 @@ console.log('PASS  seeded requeue jitter is reproducible, variable, bounded, and
 
 assert.throws(() => validatePreflight(
   { ok: true, service: 'sshfighter', engine: 'sf-7' }, {}, {},
-), /version preflight mismatch/);
-console.log('PASS  stale public API/schema profiles fail before transport creation');
+), /version preflight runtime mismatch/);
+const nextCommit = '1234567890abcdef1234567890abcdef12345678';
+const nextBuild = `sf-8@${nextCommit.slice(0, 12)}`;
+const compatibleSchema: Message = {
+  protocolVersion: EXPECTED_PROTOCOL,
+  generatedFor: {
+    engine: EXPECTED_ENGINE, commit: nextCommit, commitShort: nextCommit.slice(0, 12),
+    dirty: false, build: nextBuild, api: 1, botProtocol: EXPECTED_PROTOCOL,
+  },
+  attacks: { characters: PINNED_ROSTER.map((name) => ({ name })) },
+  simulation: { inputSemantics: { omitted: 'snapshot; Send one decision per state' } },
+};
+const compatibleDigest = sha256(stable(schemaCompatibilityView(compatibleSchema)));
+const compatibleEvidence = validatePreflight(
+  {
+    ok: true, service: 'sshfighter', engine: EXPECTED_ENGINE, commit: nextCommit,
+    commitShort: nextCommit.slice(0, 12), dirty: false, build: nextBuild,
+    botProtocol: EXPECTED_PROTOCOL,
+  },
+  {
+    ok: true, service: 'ringside', engine: EXPECTED_ENGINE, commit: nextCommit,
+    dirty: false, build: nextBuild,
+  },
+  compatibleSchema,
+  compatibleDigest,
+);
+assert.equal(compatibleEvidence.runtime.commit, nextCommit);
+assert.equal(classifyRuntime(compatibleEvidence.runtime), 'compatible-unreviewed-commit');
+assert.deepEqual(runtimeDataBoundary(compatibleEvidence.runtime), {
+  runtimeAlignment: 'compatible-unreviewed-commit',
+  datasetPartition: `${EXPECTED_ENGINE}/${nextCommit}`,
+  trainingEligibility: 'quarantined-pending-runtime-review',
+});
+const changedGeneratedFor = structuredClone(compatibleSchema);
+(changedGeneratedFor.generatedFor as Message).commit = REVIEWED_BASELINE_COMMIT;
+(changedGeneratedFor.generatedFor as Message).commitShort = REVIEWED_BASELINE_COMMIT.slice(0, 12);
+(changedGeneratedFor.generatedFor as Message).build = REVIEWED_BASELINE_BUILD;
+assert.equal(
+  sha256(stable(schemaCompatibilityView(changedGeneratedFor))), compatibleDigest,
+  'volatile build attestation must not rotate semantic compatibility',
+);
+const changedMechanics = structuredClone(compatibleSchema);
+(changedMechanics.simulation as Message).tickHz = 31;
+assert.throws(() => validatePreflight(
+  {
+    ok: true, service: 'sshfighter', engine: EXPECTED_ENGINE, commit: nextCommit,
+    commitShort: nextCommit.slice(0, 12), dirty: false, build: nextBuild,
+    botProtocol: EXPECTED_PROTOCOL,
+  },
+  {
+    ok: true, service: 'ringside', engine: EXPECTED_ENGINE, commit: nextCommit,
+    dirty: false, build: nextBuild,
+  },
+  changedMechanics,
+  compatibleDigest,
+), /compatibility hash mismatch/);
+console.log('PASS  runtime commit drift continues only inside the reviewed semantic compatibility envelope');
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const catalog = JSON.parse(readFileSync(resolve(root, 'roster/agents.json'), 'utf8')) as {
   runners?: Array<{
     id: string; implementationSha256?: string; activation?: string;
     requeueDelayMs?: number; requeueJitterMs?: number;
+    expectedEngine?: string; botProtocol?: number;
+    botSchemaCompatibilitySha256?: string; runtimeCommitPolicy?: string;
+    compatibleCommitDrift?: string;
   }>;
 };
 const implementationHash = computeRunnerImplementationHash(root);
 const expectedRequeue = new Map([
-  ['blanko-oscillator-standing-v2', [1_000, 5_000, 'sshfighter-blank-bot.service']],
-  ['megawatts-resonant-standing-v2', [9_000, 9_000, 'sshfighter-megawattsbot.service']],
+  ['blanko-oscillator-standing-v3', [1_000, 5_000, 'sshfighter-blank-bot.service']],
+  ['megawatts-resonant-standing-v3', [9_000, 9_000, 'sshfighter-megawattsbot.service']],
 ]);
 for (const [id, [delayMs, jitterMs, service]] of expectedRequeue) {
   const entry = catalog.runners?.find((candidate) => candidate.id === id);
@@ -240,6 +329,12 @@ for (const [id, [delayMs, jitterMs, service]] of expectedRequeue) {
   assert.equal(entry?.activation, 'independent-review-and-merge-required', id);
   assert.equal(entry?.requeueDelayMs, delayMs, id);
   assert.equal(entry?.requeueJitterMs, jitterMs, id);
+  assert.equal(entry?.expectedEngine, EXPECTED_ENGINE, id);
+  assert.equal(entry?.botProtocol, EXPECTED_PROTOCOL, id);
+  assert.equal(entry?.botSchemaCompatibilitySha256, EXPECTED_SCHEMA_COMPATIBILITY_SHA256, id);
+  assert.equal(entry?.runtimeCommitPolicy, 'derive-and-require-cross-surface-consistency', id);
+  assert.equal(entry?.compatibleCommitDrift,
+    'continue-with-warning-and-training-quarantine', id);
   const unit = readFileSync(resolve(root, 'deploy/systemd/user', String(service)), 'utf8');
   assert.ok(unit.includes(`--requeue-delay-ms ${String(delayMs)}`), id);
   assert.ok(unit.includes(`--requeue-jitter-ms ${String(jitterMs)}`), id);

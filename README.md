@@ -113,8 +113,12 @@ them again at `matchStart`.
 
 The character-specific MEGAWATTS boundary and stochastic resonant controllers
 also live here as hash-pinned agent-owned artifacts, not in the game-server PR.
-The standing runner binds the current exact sf-8/protocol-2 schema and uses the
-documented SSH `play` transport plus read-only REST preflight/result evidence.
+The standing runner derives the active clean sf-8 commit, requires all public
+and authenticated attestations to agree, and gates on the reviewed protocol-2
+semantic schema. Compatible unreviewed commits continue playing but emit a
+warning and keep their commit-partitioned traces quarantined from training.
+It uses the documented SSH `play` transport plus read-only REST
+preflight/result evidence.
 See `docs/MEGAWATTS_POLICY.md` for mechanics and `docs/STANDING_BOTS_V2.md` for
 the reviewed deployment and trace boundary.
 
