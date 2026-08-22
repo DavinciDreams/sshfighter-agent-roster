@@ -18,6 +18,7 @@ export const EXPECTED_BUILD = 'sf-8@614fc431c214';
 export const EXPECTED_PROTOCOL = 2;
 export const EXPECTED_SCHEMA_PATH = '/api/bot/schema';
 export const EXPECTED_SCHEMA_SHA256 = 'b4eeecb42f32f6f217c23ead2997681d49a68158f4da2a2e5d5e9ad6f21f3a2a';
+export const MAX_REQUEUE_WAIT_MS = 300_000;
 export const PINNED_ROSTER = [
   'BYU', 'MEN', 'BLANKO', 'CHONG', 'GYLE', 'ZANG', 'DHAL', 'HONDO',
   'KIRA', 'MAKO', 'OMEGA', 'CODEX', 'FABLE', 'MNEME', 'AJAX', 'XENON',
@@ -70,6 +71,7 @@ export interface RunnerOptions {
   armed: boolean;
   dryRun: boolean;
   requeueDelayMs: number;
+  requeueJitterMs: number;
 }
 
 export interface PolicyBinding {
@@ -115,6 +117,19 @@ export function stable(value: unknown): string {
 
 export function sha256(value: string | Buffer): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+export function computeRequeueDelayMs(
+  seed: number, completed: number, baseDelayMs: number, jitterMs: number,
+): number {
+  let value = (seed ^ Math.imul(completed, 0x9e3779b9) ^ 0xa5a5a5a5) >>> 0;
+  value ^= value >>> 16;
+  value = Math.imul(value, 0x7feb352d) >>> 0;
+  value ^= value >>> 15;
+  value = Math.imul(value, 0x846ca68b) >>> 0;
+  value ^= value >>> 16;
+  value >>>= 0;
+  return baseDelayMs + (jitterMs === 0 ? 0 : value % (jitterMs + 1));
 }
 
 export function computeRunnerImplementationHash(
@@ -399,7 +414,16 @@ export function createStandingController(
         result.youWon === true ? wins++ : losses++;
         completed++;
         io.audit.endMatch({ result, official, policy: policy.status(), completed, wins, losses });
-        if (!stopping) io.schedule(queue, options.requeueDelayMs);
+        if (!stopping) {
+          const delayMs = computeRequeueDelayMs(
+            options.seed, completed, options.requeueDelayMs, options.requeueJitterMs,
+          );
+          io.audit.append('requeue-scheduled', {
+            completed, delayMs, baseDelayMs: options.requeueDelayMs,
+            jitterMs: options.requeueJitterMs,
+          });
+          io.schedule(queue, delayMs);
+        }
         return;
       }
       case 'left':
@@ -476,11 +500,20 @@ export function parseArgs(argv: readonly string[]): RunnerOptions {
   if (!values['out-dir']) throw new Error('--out-dir is required');
   const seed = values.seed === undefined ? AGENTS[agent].defaultSeed : Number(values.seed);
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) throw new Error('--seed must be uint32');
+  const requeueDelayMs = values['requeue-delay-ms'] === undefined
+    ? 800 : Number(values['requeue-delay-ms']);
+  const requeueJitterMs = values['requeue-jitter-ms'] === undefined
+    ? 0 : Number(values['requeue-jitter-ms']);
+  if (!Number.isInteger(requeueDelayMs) || requeueDelayMs < 0
+      || !Number.isInteger(requeueJitterMs) || requeueJitterMs < 0
+      || requeueDelayMs + requeueJitterMs > MAX_REQUEUE_WAIT_MS) {
+    throw new Error(`requeue delay and jitter must be non-negative integers totaling at most ${MAX_REQUEUE_WAIT_MS}ms`);
+  }
   if (!dryRun && !armed) throw new Error('live standing execution requires --armed');
   return {
     agent, identity: resolve(values.identity), outDir: resolve(values['out-dir']),
     host: values.host ?? 'sshfighter.com', seed, armed, dryRun,
-    requeueDelayMs: 800,
+    requeueDelayMs, requeueJitterMs,
   };
 }
 
@@ -534,6 +567,7 @@ export async function executeRunner(
       commit: EXPECTED_COMMIT, protocol: EXPECTED_PROTOCOL, schemaSha256: EXPECTED_SCHEMA_SHA256,
       implementationSha256,
       transport: 'ssh-play', opponents: 'bots', identity: basename(options.identity),
+      requeueDelayMs: options.requeueDelayMs, requeueJitterMs: options.requeueJitterMs,
     }, null, 2));
     return;
   }
@@ -543,7 +577,8 @@ export async function executeRunner(
     runnerSchema: RUNNER_SCHEMA, agent: options.agent, handle: binding.handle,
     fingerprint: binding.fingerprint, character: binding.character, policyId: binding.policyId,
     seed: options.seed, transport: 'ssh-play', opponents: 'bots', preflight: preflightEvidence,
-    implementationSha256,
+    implementationSha256, requeueDelayMs: options.requeueDelayMs,
+    requeueJitterMs: options.requeueJitterMs,
   });
   const sshArgs = [
     '-T', '-i', options.identity, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',

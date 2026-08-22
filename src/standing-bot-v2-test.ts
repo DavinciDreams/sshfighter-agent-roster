@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import {
   AGENTS, EXPECTED_BUILD, EXPECTED_COMMIT, EXPECTED_ENGINE, EXPECTED_PROTOCOL,
   EXPECTED_SCHEMA_PATH, PINNED_ROSTER, createPolicyBinding, createStandingController,
-  computeRunnerImplementationHash, normalizeInput, parseArgs, validateOfficial, validatePreflight,
+  computeRequeueDelayMs, computeRunnerImplementationHash, normalizeInput, parseArgs,
+  validateOfficial, validatePreflight,
   type AgentId, type AuditSink, type RunnerOptions,
 } from './tools/standing-bot-v2.js';
 
@@ -43,7 +44,8 @@ const state = (agent: AgentId, frame: number, ack: number, overrides: Message = 
 
 const options = (agent: AgentId): RunnerOptions => ({
   agent, identity: '/tmp/test.key', outDir: '/tmp/test-output', host: 'sshfighter.com',
-  seed: AGENTS[agent].defaultSeed, armed: true, dryRun: false, requeueDelayMs: 800,
+  seed: AGENTS[agent].defaultSeed, armed: true, dryRun: false,
+  requeueDelayMs: 1_000, requeueJitterMs: 5_000,
 });
 
 function official(agent: AgentId, mid = 'm1'): Message {
@@ -59,14 +61,14 @@ function official(agent: AgentId, mid = 'm1'): Message {
 
 function harness(agent: AgentId) {
   const sent: Message[] = [];
-  const scheduled: Array<() => void> = [];
+  const scheduled: Array<{ fn: () => void; delayMs: number }> = [];
   const audit = new MemoryAudit();
   let closed = false;
   let clock = 1_000n;
   const controller = createStandingController(options(agent), createPolicyBinding(agent, options(agent).seed), {
     send: (message) => sent.push(message), close: () => { closed = true; }, audit,
     fetchOfficial: async (mid) => official(agent, mid),
-    schedule: (fn) => { scheduled.push(fn); return scheduled.length; },
+    schedule: (fn, delayMs) => { scheduled.push({ fn, delayMs }); return scheduled.length; },
     nowNs: () => { clock += 100n; return clock; },
   });
   return { controller, sent, scheduled, audit, isClosed: () => closed };
@@ -105,7 +107,12 @@ for (const agent of ['blank', 'megawatts'] as const) {
   });
   assert.equal(h.controller.status().completed, 1);
   assert.equal(h.scheduled.length, 1);
-  h.scheduled[0]!();
+  assert.ok(h.scheduled[0]!.delayMs >= 1_000 && h.scheduled[0]!.delayMs <= 6_000);
+  const requeueEvent = h.audit.rows.find((row) => row.event === 'requeue-scheduled');
+  assert.deepEqual(requeueEvent?.payload, {
+    completed: 1, delayMs: h.scheduled[0]!.delayMs, baseDelayMs: 1_000, jitterMs: 5_000,
+  });
+  h.scheduled[0]!.fn();
   assert.deepEqual(h.sent.at(-1), { t: 'queue', char: AGENTS[agent].character, opponents: 'bots' });
   await h.controller.handle({
     t: 'matchStart', mid: 'm2', role: 'a', yourCursor: PINNED_ROSTER.indexOf(AGENTS[agent].character),
@@ -183,8 +190,32 @@ assert.throws(() => normalizeInput({ t: 'input', motion: 'Q' }), /invalid absolu
 assert.throws(() => parseArgs(['--agent', 'blank', '--identity', '/tmp/k', '--out-dir', '/tmp/o']), /--armed/);
 assert.equal(parseArgs([
   '--agent', 'megawatts', '--identity', '/tmp/k', '--out-dir', '/tmp/o', '--dry-run',
-]).dryRun, true);
-console.log('PASS  CLI arm gate and protocol-2 snapshot normalization are explicit');
+  '--requeue-delay-ms', '9000', '--requeue-jitter-ms', '9000',
+]).requeueJitterMs, 9000);
+assert.throws(() => parseArgs([
+  '--agent', 'blank', '--identity', '/tmp/k', '--out-dir', '/tmp/o', '--dry-run',
+  '--requeue-jitter-ms', '-1',
+]), /non-negative integers/);
+assert.throws(() => parseArgs([
+  '--agent', 'blank', '--identity', '/tmp/k', '--out-dir', '/tmp/o', '--dry-run',
+  '--requeue-delay-ms', '299999', '--requeue-jitter-ms', '2',
+]), /at most/);
+console.log('PASS  CLI arm gate, bounded requeue controls, and snapshot normalization are explicit');
+
+const blankDelays = Array.from({ length: 32 }, (_, index) => computeRequeueDelayMs(
+  AGENTS.blank.defaultSeed, index + 1, 1_000, 5_000,
+));
+const repeatedBlankDelays = Array.from({ length: 32 }, (_, index) => computeRequeueDelayMs(
+  AGENTS.blank.defaultSeed, index + 1, 1_000, 5_000,
+));
+const megawattsDelays = Array.from({ length: 32 }, (_, index) => computeRequeueDelayMs(
+  AGENTS.megawatts.defaultSeed, index + 1, 9_000, 9_000,
+));
+assert.deepEqual(blankDelays, repeatedBlankDelays);
+assert.ok(new Set(blankDelays).size > 1);
+assert.ok(blankDelays.every((delay) => delay >= 1_000 && delay <= 6_000));
+assert.ok(megawattsDelays.every((delay) => delay >= 9_000 && delay <= 18_000));
+console.log('PASS  seeded requeue jitter is reproducible, variable, bounded, and staggered by agent');
 
 assert.throws(() => validatePreflight(
   { ok: true, service: 'sshfighter', engine: 'sf-7' }, {}, {},
@@ -193,12 +224,24 @@ console.log('PASS  stale public API/schema profiles fail before transport creati
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const catalog = JSON.parse(readFileSync(resolve(root, 'roster/agents.json'), 'utf8')) as {
-  runners?: Array<{ id: string; implementationSha256?: string; activation?: string }>;
+  runners?: Array<{
+    id: string; implementationSha256?: string; activation?: string;
+    requeueDelayMs?: number; requeueJitterMs?: number;
+  }>;
 };
 const implementationHash = computeRunnerImplementationHash(root);
-for (const id of ['blanko-oscillator-standing-v2', 'megawatts-resonant-standing-v2']) {
+const expectedRequeue = new Map([
+  ['blanko-oscillator-standing-v2', [1_000, 5_000, 'sshfighter-blank-bot.service']],
+  ['megawatts-resonant-standing-v2', [9_000, 9_000, 'sshfighter-megawattsbot.service']],
+]);
+for (const [id, [delayMs, jitterMs, service]] of expectedRequeue) {
   const entry = catalog.runners?.find((candidate) => candidate.id === id);
   assert.equal(entry?.implementationSha256, implementationHash, id);
   assert.equal(entry?.activation, 'independent-review-and-merge-required', id);
+  assert.equal(entry?.requeueDelayMs, delayMs, id);
+  assert.equal(entry?.requeueJitterMs, jitterMs, id);
+  const unit = readFileSync(resolve(root, 'deploy/systemd/user', String(service)), 'utf8');
+  assert.ok(unit.includes(`--requeue-delay-ms ${String(delayMs)}`), id);
+  assert.ok(unit.includes(`--requeue-jitter-ms ${String(jitterMs)}`), id);
 }
-console.log('PASS  both standing profiles pin the complete runner/policy implementation and review gate');
+console.log('PASS  standing profiles and service units pin implementation, cooldown bands, and review gate');

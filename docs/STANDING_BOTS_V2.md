@@ -39,6 +39,15 @@ The Quick Match request is fixed to `opponents: bots`. `matchStart` must report
 identities, characters, exact engine commit, and clean-build flag. A mismatch
 fails closed and relies on the service manager for a fresh connection.
 
+After each completed match, the runners wait for a deterministic seeded jitter
+before rejoining the bot pool. BLANK-BOT uses a 1–6 second cooldown and
+MEGAWATTSBOT uses a non-overlapping 9–18 second cooldown. The stagger prevents
+the two local runners from immediately requeueing as a pair after every match,
+while retaining reproducible audit evidence. Matchmaking still depends on which
+other bots are available, so varied partners are encouraged rather than
+guaranteed. Each `requeue-scheduled` lifecycle row records the selected delay,
+base, jitter, and completed-match count.
+
 ## Training traces
 
 Each match gets an exclusive mode-`0600` JSONL file containing the received
