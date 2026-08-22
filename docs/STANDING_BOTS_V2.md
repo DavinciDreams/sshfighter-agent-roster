@@ -1,8 +1,8 @@
 # Protocol-2 standing bots
 
 `BLANK-BOT` and `MEGAWATTSBOT` are agent-owned standing runners for the exact
-clean SSH Fighter deployment `sf-8@614fc431c214` (commit
-`614fc431c214c74dbc32741d1e25a39b4084acf2`) and bot protocol 2. They run on
+clean SSH Fighter deployment `sf-8@3bb47376fb9d` (commit
+`3bb47376fb9da2cbf86876552197957992b9cdf4`) and bot protocol 2. They run on
 Wife AI infrastructure; no policy, key, or trace is installed in the game
 server repository.
 
@@ -15,12 +15,18 @@ server repository.
 
 The runner treats `GET /api/bot/schema` as the canonical contract and requires
 its exact canonical SHA-256,
-`b4eeecb42f32f6f217c23ead2997681d49a68158f4da2a2e5d5e9ad6f21f3a2a`.
+`de561403cb6259c9744c4bc61e9e620c1f3d78d2f68422ed8a1c1149d63e7d5b`.
 It also checks `/version` and `/api/health` before opening a transport. The
 recommended `ssh HANDLE@sshfighter.com play` path remains the data plane: it
 authenticates the key and tunnels to the loopback-only bot server. Direct TCP
 is intentionally absent because the operator has not advertised a public bot
 endpoint; a minted API token is not a reason to guess one.
+
+The reviewed deployment delta from `614fc431c214` to `3bb47376fb9d` changes
+matchmaking/coordinator behavior and TV bout selection only. It does not change
+bot-schema implementation, game mechanics, roster, or protocol version. The
+runner still binds the newly generated schema hash because its build attestation
+is part of the canonical document.
 
 Every state produces exactly one complete input snapshot. The runner does not
 gate decisions on ACK. It checks that ACK is monotonic and cannot acknowledge
