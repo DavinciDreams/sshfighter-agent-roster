@@ -53,6 +53,18 @@ The compatibility pin is intentionally strict. Updating
 the complete test suite, and fresh review. A public engine label alone is
 not a deploy-commit attestation.
 
+## Current-live Gym
+
+SSH Gym v3 pins exact `sf-8@dae9cd845790`, protocol 2, and reuses upstream's
+canonical `botStateFor` observation projection and `botApiSchema` contract.
+It is a separate epoch from historical Gym v2 evidence. See
+[`docs/SSH_GYM_V3.md`](docs/SSH_GYM_V3.md).
+
+```bash
+pnpm test:ssh-gym-v3
+pnpm ssh-gym-v3
+```
+
 ## Dry runs
 
 Dry runs validate local configuration without health, token, SSH, Lounge, or

@@ -12,6 +12,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "vendor/sshfighter/src/**/*.d.ts"
+    "vendor/sshfighter/src/**/*.d.ts",
+    "vendor/sshfighter-sf8/src/**/*.d.ts"
   ]
 }

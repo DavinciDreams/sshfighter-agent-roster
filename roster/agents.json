@@ -15,6 +15,22 @@
     "rosterCount": 18,
     "attestation": "version, health, canonical bot schema, and authenticated welcome/matchStart"
   },
+  "gyms": [
+    {
+      "id": "ssh-gym-v3-sf8-bot-protocol-v2",
+      "schema": "sshfighter-agent-roster/ssh-gym-v3/bot-protocol-v2",
+      "vendorCommit": "dae9cd8457901ba1316f3230fba5fb28fc14b751",
+      "engineVersion": "sf-8",
+      "build": "sf-8@dae9cd845790",
+      "botProtocol": 2,
+      "schemaPath": "/api/bot/schema",
+      "schemaSha256": "4e0f9b1a13386d88ea64e2beba0e99ee4ffbc5815edb9ec9b7c0d4fc2939e855",
+      "implementationSha256": "98cdd7bd7027703bff150ec29a133c83840052a4444828b3c63d42fba4f51673",
+      "observationProfiles": ["bot-protocol-v2", "engine-oracle-v1"],
+      "actuationProfiles": ["snapshot-input-v2", "round-safe-fifo-v2"],
+      "datasetEpoch": "sf8/protocol2"
+    }
+  ],
   "policyArtifacts": [
     {
       "id": "megawatts-boundary-v1",
