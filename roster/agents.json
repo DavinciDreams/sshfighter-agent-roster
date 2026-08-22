@@ -6,6 +6,21 @@
     "runtimeProfile": "ringside/sf-6 plus exact authenticated 17-fighter roster",
     "deployedCommitAttested": false
   },
+  "gyms": [
+    {
+      "id": "ssh-gym-v2",
+      "role": "offline exact-engine environment",
+      "entrypoint": "src/tools/ssh-gym-v2.ts",
+      "test": "test:ssh-gym-v2",
+      "implementationSha256": "8e33b771f165f30615642ab56358a0d7ca7da11465c2c912403755f23bc868a2",
+      "vendorCommit": "3caedf3435c12996cf4d34fb5ac76c7cd7b75076",
+      "engineVersion": "sf-6",
+      "observationProfiles": ["bot-wire-v1", "engine-oracle-v1"],
+      "actuationProfiles": ["direct-engine-input-v1", "round-safe-fifo-v1"],
+      "networkAccess": false,
+      "deployCommitAttested": false
+    }
+  ],
   "runners": [
     {
       "id": "xenon-universal-bounded",

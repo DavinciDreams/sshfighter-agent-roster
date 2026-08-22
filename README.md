@@ -30,6 +30,23 @@ supervisor launches a fresh one-bout child for each rotation entry. Both paths
 require empty-queue checks before and after authentication. Live runners write
 an exclusive mode-`0600` redacted JSONL ledger.
 
+## Offline Gym
+
+SSH Gym v2 is an agent-owned exact-engine JSONL environment for policy and
+model evaluation. It uses the same pinned vendor snapshot as the runners but
+has no identity, token, SSH, queue, Lounge, or live-match capability:
+
+```bash
+pnpm gym:ssh-v2
+```
+
+The environment exposes canonical `bot-wire-v1` observations, a separately
+labelled `engine-oracle-v1` research profile, direct input, and round-safe
+synthetic FIFO delay. It validates the vendor commit, canonical engine version,
+ordered roster, component hashes, stages, styles, and its own implementation
+digest before serving commands. See `docs/SSH_GYM_V2.md` for the JSONL contract
+and evidence boundary.
+
 ## Checkout
 
 ```bash
