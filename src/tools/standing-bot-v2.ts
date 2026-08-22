@@ -13,11 +13,11 @@ import { createWirePolicy as createMegawattsPolicy } from '../policies/megawatts
 
 export const RUNNER_SCHEMA = 'sshfighter-standing-bot/v2';
 export const EXPECTED_ENGINE = 'sf-8';
-export const EXPECTED_COMMIT = '838924f24b177f2a1eee0786578c3bd44d093108';
-export const EXPECTED_BUILD = 'sf-8@838924f24b17';
+export const EXPECTED_COMMIT = 'dae9cd8457901ba1316f3230fba5fb28fc14b751';
+export const EXPECTED_BUILD = 'sf-8@dae9cd845790';
 export const EXPECTED_PROTOCOL = 2;
 export const EXPECTED_SCHEMA_PATH = '/api/bot/schema';
-export const EXPECTED_SCHEMA_SHA256 = '965f1b33bcfa1e4fc34f41ed5d10fbfbdddc3816636652769ec7dca237c5f528';
+export const EXPECTED_SCHEMA_SHA256 = '4e0f9b1a13386d88ea64e2beba0e99ee4ffbc5815edb9ec9b7c0d4fc2939e855';
 export const PINNED_ROSTER = [
   'BYU', 'MEN', 'BLANKO', 'CHONG', 'GYLE', 'ZANG', 'DHAL', 'HONDO',
   'KIRA', 'MAKO', 'OMEGA', 'CODEX', 'FABLE', 'MNEME', 'AJAX', 'XENON',
