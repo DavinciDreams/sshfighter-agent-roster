@@ -28,7 +28,7 @@ strategy transitions.
 
 ## Protocol-2 activation boundary
 
-The live server now attests exact clean `sf-8@dae9cd845790`, bot protocol 2,
+The live server now attests exact clean `sf-8@614fc431c214`, bot protocol 2,
 and an 18-fighter roster including MEGAWATTS. The separate standing-runner
 change binds that exact schema and deployment. Activation remains review-gated
 until all of the following are reviewed together:

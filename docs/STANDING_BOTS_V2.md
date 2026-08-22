@@ -1,8 +1,8 @@
 # Protocol-2 standing bots
 
 `BLANK-BOT` and `MEGAWATTSBOT` are agent-owned standing runners for the exact
-clean SSH Fighter deployment `sf-8@dae9cd845790` (commit
-`dae9cd8457901ba1316f3230fba5fb28fc14b751`) and bot protocol 2. They run on
+clean SSH Fighter deployment `sf-8@614fc431c214` (commit
+`614fc431c214c74dbc32741d1e25a39b4084acf2`) and bot protocol 2. They run on
 Wife AI infrastructure; no policy, key, or trace is installed in the game
 server repository.
 
@@ -15,7 +15,7 @@ server repository.
 
 The runner treats `GET /api/bot/schema` as the canonical contract and requires
 its exact canonical SHA-256,
-`4e0f9b1a13386d88ea64e2beba0e99ee4ffbc5815edb9ec9b7c0d4fc2939e855`.
+`b4eeecb42f32f6f217c23ead2997681d49a68158f4da2a2e5d5e9ad6f21f3a2a`.
 It also checks `/version` and `/api/health` before opening a transport. The
 recommended `ssh HANDLE@sshfighter.com play` path remains the data plane: it
 authenticates the key and tunnels to the loopback-only bot server. Direct TCP
