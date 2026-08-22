@@ -1,10 +1,11 @@
 # Protocol-2 standing bots
 
-`BLANK-BOT` and `MEGAWATTSBOT` are agent-owned standing runners for the exact
-clean SSH Fighter deployment `sf-8@68218a463e63` (commit
-`68218a463e631ec4705cb684daef4ba259bff573`) and bot protocol 2. They run on
-Wife AI infrastructure; no policy, key, or trace is installed in the game
-server repository.
+`BLANK-BOT` and `MEGAWATTSBOT` are agent-owned protocol-2 standing runners for
+clean SSH Fighter `sf-8` deployments. Runner schema v3 derives the active
+commit from the public version endpoint instead of requiring an operator to
+repin every presentation-only server release. They run on Wife AI
+infrastructure; no policy, key, or trace is installed in the game-server
+repository.
 
 | agent | authenticated identity | fighter | policy |
 | --- | --- | --- | --- |
@@ -13,20 +14,40 @@ server repository.
 
 ## Protocol and API boundary
 
-The runner treats `GET /api/bot/schema` as the canonical contract and requires
-its exact canonical SHA-256,
-`666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151`.
-It also checks `/version` and `/api/health` before opening a transport. The
-recommended `ssh HANDLE@sshfighter.com play` path remains the data plane: it
-authenticates the key and tunnels to the loopback-only bot server. Direct TCP
-is intentionally absent because the operator has not advertised a public bot
-endpoint; a minted API token is not a reason to guess one.
+The runner treats `GET /api/bot/schema` as the canonical contract. It removes
+only `generatedFor.commit`, `generatedFor.commitShort`, and
+`generatedFor.build` before hashing the compatibility view; engine, dirty flag,
+API/protocol versions, roster, attacks, moves, simulation values, and input
+semantics remain covered. The reviewed compatibility SHA-256 is
+`ff0f15717145673bcbe0f2724f68ec9114e3088e764fb077f6c9a6b65e8d3157`.
 
-The reviewed deployment delta from `3bb47376fb9d` to `68218a463e63` adds
+Before opening SSH, `/version`, `/api/health`, and the schema must identify the
+same clean `sf-8` commit and self-consistent `sf-8@<12-char-commit>` build. The
+authenticated `hi`, `welcome`, and `matchStart` messages must stay on that
+commit, and the official match record must bind it again. Any engine, dirty
+state, protocol, roster, schema-semantic, or cross-surface commit mismatch
+still fails closed. The recommended `ssh HANDLE@sshfighter.com play` path
+remains the data plane: it authenticates the key and tunnels to the
+loopback-only bot server. Direct TCP is intentionally absent because the
+operator has not advertised a public bot endpoint; a minted API token is not a
+reason to guess one.
+
+The reviewed runtime baseline is clean `sf-8@68218a463e63`, commit
+`68218a463e631ec4705cb684daef4ba259bff573`, with full canonical schema hash
+`666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151`.
+The reviewed deployment delta from `3bb47376fb9d` to that commit adds
 projectile artwork, match-history/replay presentation, and web routing only. It
-does not change bot-schema implementation, game mechanics, roster, or protocol
-version. The runner still binds the newly generated schema hash because its
-`generatedFor` build attestation is part of the canonical document.
+does not change bot-schema implementation, game mechanics, roster, or protocol.
+
+If a later clean commit has the same compatibility hash, the bots continue and
+emit `runtime-alignment` with warning disposition
+`continue-compatible-quarantine`. Session and match manifests record the
+actual commit, build, full schema hash, compatibility hash, and dataset
+partition `sf-8/<commit>`. Those traces carry
+`trainingEligibility: quarantined-pending-runtime-review`; they must not be
+mixed into reviewed training data until that exact runtime delta is reviewed.
+The baseline emits `reviewed-baseline` and `reviewed-runtime`. This is a data
+label and provenance boundary, not an automatic efficacy label.
 
 Every state produces exactly one complete input snapshot. The runner does not
 gate decisions on ACK. It checks that ACK is monotonic and cannot acknowledge
@@ -58,10 +79,10 @@ base, jitter, and completed-match count.
 
 Each match gets an exclusive mode-`0600` JSONL file containing the received
 state, full action snapshot, policy state, monotonic decision duration,
-state-frame gap, ACK, sent sequence, and outstanding-input depth. Session and
-official-result boundaries are stored separately. This is live transport data
-for the protocol-2 Gym profile; it is not automatically labeled as efficacy
-evidence and is never committed.
+state-frame gap, ACK, sent sequence, outstanding-input depth, and exact runtime
+provenance. Session and official-result boundaries are stored separately. This
+is live transport data for the protocol-2 Gym profile; it is not automatically
+labeled as efficacy evidence and is never committed.
 
 ## Dry run
 

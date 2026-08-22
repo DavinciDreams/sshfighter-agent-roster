@@ -6,14 +6,18 @@
     "reviewedSourceProfile": "ringside/sf-6 plus exact authenticated 17-fighter roster",
     "deployedCommitAttested": false
   },
-  "liveRuntime": {
+  "runtimeCompatibility": {
     "engine": "sf-8",
-    "commit": "68218a463e631ec4705cb684daef4ba259bff573",
-    "build": "sf-8@68218a463e63",
     "botProtocol": 2,
-    "botSchemaSha256": "666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151",
+    "botSchemaCompatibilitySha256": "ff0f15717145673bcbe0f2724f68ec9114e3088e764fb077f6c9a6b65e8d3157",
     "rosterCount": 18,
-    "attestation": "version, health, canonical bot schema, and authenticated welcome/matchStart"
+    "commitPolicy": "derive from version preflight and require health, schema, SSH hi/welcome/matchStart, and official result agreement",
+    "compatibleCommitDrift": "continue with warning, commit-partitioned traces, and training quarantine",
+    "reviewedBaseline": {
+      "commit": "68218a463e631ec4705cb684daef4ba259bff573",
+      "build": "sf-8@68218a463e63",
+      "botSchemaSha256": "666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151"
+    }
   },
   "gyms": [
     {
@@ -109,7 +113,7 @@
       "maxMatches": 1
     },
     {
-      "id": "blanko-oscillator-standing-v2",
+      "id": "blanko-oscillator-standing-v3",
       "agent": "BLANK",
       "handle": "BLANK-BOT",
       "expectedFingerprint": "SHA256:xd/3Gvx2khlsWD2qBEU2kR7CUaMn1TDUTIV7qxNK7R8",
@@ -117,10 +121,16 @@
       "policy": "blanko-oscillator-resonant-v1",
       "seed": 20260822,
       "opponents": "bots",
-      "expectedBuild": "sf-8@68218a463e63",
-      "expectedCommit": "68218a463e631ec4705cb684daef4ba259bff573",
+      "expectedEngine": "sf-8",
       "botProtocol": 2,
-      "botSchemaSha256": "666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151",
+      "botSchemaCompatibilitySha256": "ff0f15717145673bcbe0f2724f68ec9114e3088e764fb077f6c9a6b65e8d3157",
+      "runtimeCommitPolicy": "derive-and-require-cross-surface-consistency",
+      "compatibleCommitDrift": "continue-with-warning-and-training-quarantine",
+      "reviewedBaseline": {
+        "commit": "68218a463e631ec4705cb684daef4ba259bff573",
+        "build": "sf-8@68218a463e63",
+        "botSchemaSha256": "666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151"
+      },
       "transport": "ssh-play-standing",
       "entrypoint": "src/tools/standing-bot-v2.ts",
       "service": "deploy/systemd/user/sshfighter-blank-bot.service",
@@ -132,14 +142,14 @@
         "src/policies/megawatts-innovation-policy.ts",
         "src/policies/megawatts-resonant-policy.ts"
       ],
-      "implementationSha256": "91fb2338b1ee111334bbd81ea1fa9b57f260bb0355ec7e7f159d70b9cb60f63f",
+      "implementationSha256": "82872f2c08398099a32167bcad55eb66d4cc2a012c878eb25348ab43bc9b35df",
       "matchLimit": "standing; one bot-only match at a time",
       "requeueDelayMs": 1000,
       "requeueJitterMs": 5000,
       "activation": "independent-review-and-merge-required"
     },
     {
-      "id": "megawatts-resonant-standing-v2",
+      "id": "megawatts-resonant-standing-v3",
       "agent": "MEGAWATTS",
       "handle": "MEGAWATTSBOT",
       "expectedFingerprint": "SHA256:Zb/rg2d5XEjD6tU5a3aS6CLjrAiDOAh41Tlj55TeFRE",
@@ -147,10 +157,16 @@
       "policy": "megawatts-resonant-v1",
       "seed": 1297568852,
       "opponents": "bots",
-      "expectedBuild": "sf-8@68218a463e63",
-      "expectedCommit": "68218a463e631ec4705cb684daef4ba259bff573",
+      "expectedEngine": "sf-8",
       "botProtocol": 2,
-      "botSchemaSha256": "666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151",
+      "botSchemaCompatibilitySha256": "ff0f15717145673bcbe0f2724f68ec9114e3088e764fb077f6c9a6b65e8d3157",
+      "runtimeCommitPolicy": "derive-and-require-cross-surface-consistency",
+      "compatibleCommitDrift": "continue-with-warning-and-training-quarantine",
+      "reviewedBaseline": {
+        "commit": "68218a463e631ec4705cb684daef4ba259bff573",
+        "build": "sf-8@68218a463e63",
+        "botSchemaSha256": "666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151"
+      },
       "transport": "ssh-play-standing",
       "entrypoint": "src/tools/standing-bot-v2.ts",
       "service": "deploy/systemd/user/sshfighter-megawattsbot.service",
@@ -162,7 +178,7 @@
         "src/policies/megawatts-innovation-policy.ts",
         "src/policies/megawatts-resonant-policy.ts"
       ],
-      "implementationSha256": "91fb2338b1ee111334bbd81ea1fa9b57f260bb0355ec7e7f159d70b9cb60f63f",
+      "implementationSha256": "82872f2c08398099a32167bcad55eb66d4cc2a012c878eb25348ab43bc9b35df",
       "matchLimit": "standing; one bot-only match at a time",
       "requeueDelayMs": 9000,
       "requeueJitterMs": 9000,

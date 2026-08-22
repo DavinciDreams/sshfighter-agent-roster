@@ -11,13 +11,14 @@ import type { Readable, Writable } from 'node:stream';
 import { createMegaInnovationPolicy } from '../policies/mega-innovation-router.mjs';
 import { createWirePolicy as createMegawattsPolicy } from '../policies/megawatts-resonant-policy.js';
 
-export const RUNNER_SCHEMA = 'sshfighter-standing-bot/v2';
+export const RUNNER_SCHEMA = 'sshfighter-standing-bot/v3';
 export const EXPECTED_ENGINE = 'sf-8';
-export const EXPECTED_COMMIT = '68218a463e631ec4705cb684daef4ba259bff573';
-export const EXPECTED_BUILD = 'sf-8@68218a463e63';
 export const EXPECTED_PROTOCOL = 2;
 export const EXPECTED_SCHEMA_PATH = '/api/bot/schema';
-export const EXPECTED_SCHEMA_SHA256 = '666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151';
+export const REVIEWED_BASELINE_COMMIT = '68218a463e631ec4705cb684daef4ba259bff573';
+export const REVIEWED_BASELINE_BUILD = 'sf-8@68218a463e63';
+export const REVIEWED_BASELINE_SCHEMA_SHA256 = '666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151';
+export const EXPECTED_SCHEMA_COMPATIBILITY_SHA256 = 'ff0f15717145673bcbe0f2724f68ec9114e3088e764fb077f6c9a6b65e8d3157';
 export const MAX_REQUEUE_WAIT_MS = 300_000;
 export const PINNED_ROSTER = [
   'BYU', 'MEN', 'BLANKO', 'CHONG', 'GYLE', 'ZANG', 'DHAL', 'HONDO',
@@ -34,6 +35,44 @@ export const RUNNER_IMPLEMENTATION_FILES = [
 
 export type AgentId = 'blank' | 'megawatts';
 type JsonObject = Record<string, unknown>;
+
+export interface RuntimeIdentity extends JsonObject {
+  engine: string;
+  commit: string;
+  build: string;
+  protocol: number;
+}
+
+export interface RuntimeAttestation extends RuntimeIdentity {
+  schemaSha256: string;
+  schemaCompatibilitySha256: string;
+}
+
+export interface PreflightEvidence extends JsonObject {
+  version: JsonObject;
+  health: JsonObject;
+  runtime: RuntimeAttestation;
+  schemaSha256: string;
+  schemaCompatibilitySha256: string;
+}
+
+export type RuntimeAlignment = 'reviewed-baseline' | 'compatible-unreviewed-commit';
+
+export function classifyRuntime(runtime: RuntimeAttestation): RuntimeAlignment {
+  return runtime.commit === REVIEWED_BASELINE_COMMIT
+      && runtime.schemaSha256 === REVIEWED_BASELINE_SCHEMA_SHA256
+    ? 'reviewed-baseline' : 'compatible-unreviewed-commit';
+}
+
+export function runtimeDataBoundary(runtime: RuntimeAttestation): JsonObject {
+  const runtimeAlignment = classifyRuntime(runtime);
+  return {
+    runtimeAlignment,
+    datasetPartition: `${runtime.engine}/${runtime.commit}`,
+    trainingEligibility: runtimeAlignment === 'reviewed-baseline'
+      ? 'reviewed-runtime' : 'quarantined-pending-runtime-review',
+  };
+}
 
 export interface CompleteInput extends JsonObject {
   t: 'input'; moveX: -1 | 0 | 1; down: boolean; jump: boolean;
@@ -147,39 +186,75 @@ function exactArray(value: unknown, expected: readonly string[]): boolean {
     && value.every((entry, index) => entry === expected[index]);
 }
 
-export function assertExactBuild(message: JsonObject, label: string): void {
-  if (message.engine !== EXPECTED_ENGINE || message.commit !== EXPECTED_COMMIT
-      || message.dirty !== false || message.build !== EXPECTED_BUILD
-      || message.protocol !== EXPECTED_PROTOCOL || message.schema !== EXPECTED_SCHEMA_PATH) {
-    throw new Error(`${label} runtime mismatch: require exact clean ${EXPECTED_BUILD} protocol ${EXPECTED_PROTOCOL}`);
+function cleanRuntime(
+  value: JsonObject, protocol: unknown, label: string,
+): RuntimeIdentity {
+  const commit = String(value.commit ?? '');
+  const build = String(value.build ?? '');
+  if (value.engine !== EXPECTED_ENGINE || !/^[0-9a-f]{40}$/.test(commit)
+      || value.dirty !== false || build !== `${EXPECTED_ENGINE}@${commit.slice(0, 12)}`
+      || protocol !== EXPECTED_PROTOCOL) {
+    throw new Error(`${label} runtime mismatch: require clean ${EXPECTED_ENGINE}, self-consistent build, and protocol ${EXPECTED_PROTOCOL}`);
+  }
+  return { engine: EXPECTED_ENGINE, commit, build, protocol: EXPECTED_PROTOCOL };
+}
+
+export function assertCompatibleRuntime(
+  message: JsonObject, label: string, expected: RuntimeIdentity,
+): void {
+  const actual = cleanRuntime(message, message.protocol, label);
+  if (message.schema !== EXPECTED_SCHEMA_PATH || actual.commit !== expected.commit
+      || actual.build !== expected.build) {
+    throw new Error(`${label} runtime changed after preflight`);
   }
 }
 
-export function validatePreflight(version: unknown, health: unknown, schema: unknown): JsonObject {
+export function schemaCompatibilityView(schema: unknown): JsonObject {
+  const root = asObject(schema, 'bot schema');
+  const generated = { ...asObject(root.generatedFor, 'bot schema generatedFor') };
+  delete generated.commit;
+  delete generated.commitShort;
+  delete generated.build;
+  return { ...root, generatedFor: generated };
+}
+
+export function validatePreflight(
+  version: unknown, health: unknown, schema: unknown,
+  expectedCompatibilitySha256 = EXPECTED_SCHEMA_COMPATIBILITY_SHA256,
+): PreflightEvidence {
   const v = version as JsonObject;
   const h = health as JsonObject;
   const s = schema as JsonObject;
-  if (v?.ok !== true || v.service !== 'sshfighter' || v.engine !== EXPECTED_ENGINE
-      || v.commit !== EXPECTED_COMMIT || v.dirty !== false || v.build !== EXPECTED_BUILD
-      || v.botProtocol !== EXPECTED_PROTOCOL) throw new Error('version preflight mismatch');
-  if (h?.ok !== true || h.service !== 'ringside' || h.engine !== EXPECTED_ENGINE
-      || h.commit !== EXPECTED_COMMIT || h.dirty !== false || h.build !== EXPECTED_BUILD) {
-    throw new Error('health preflight mismatch');
+  if (v?.ok !== true || v.service !== 'sshfighter') throw new Error('version preflight mismatch');
+  const runtime = cleanRuntime(v, v.botProtocol, 'version preflight');
+  if (v.commitShort !== runtime.commit.slice(0, 12)) throw new Error('version short commit mismatch');
+  if (h?.ok !== true || h.service !== 'ringside') throw new Error('health preflight mismatch');
+  const healthRuntime = cleanRuntime(h, EXPECTED_PROTOCOL, 'health preflight');
+  if (healthRuntime.commit !== runtime.commit || healthRuntime.build !== runtime.build) {
+    throw new Error('version and health runtime mismatch');
   }
   const generated = s?.generatedFor as JsonObject;
   const roster = (s?.attacks as JsonObject)?.characters;
   const rosterNames = Array.isArray(roster) ? roster.map((entry) => (entry as JsonObject)?.name) : [];
   const inputSemantics = ((s?.simulation as JsonObject)?.inputSemantics as JsonObject)?.omitted;
   if (s?.protocolVersion !== EXPECTED_PROTOCOL || generated?.engine !== EXPECTED_ENGINE
-      || generated?.commit !== EXPECTED_COMMIT || generated?.dirty !== false
-      || generated?.build !== EXPECTED_BUILD || !exactArray(rosterNames, PINNED_ROSTER)
+      || generated?.commit !== runtime.commit || generated?.dirty !== false
+      || generated?.commitShort !== runtime.commit.slice(0, 12)
+      || generated?.build !== runtime.build || generated?.api !== 1
+      || generated?.botProtocol !== EXPECTED_PROTOCOL
+      || !exactArray(rosterNames, PINNED_ROSTER)
       || typeof inputSemantics !== 'string' || !inputSemantics.includes('snapshot')
       || !inputSemantics.includes('Send one decision per state')) throw new Error('bot schema contract mismatch');
   const digest = sha256(stable(s));
-  if (digest !== EXPECTED_SCHEMA_SHA256) {
-    throw new Error(`bot schema hash mismatch: expected ${EXPECTED_SCHEMA_SHA256}, received ${digest}`);
+  const compatibilityDigest = sha256(stable(schemaCompatibilityView(s)));
+  if (compatibilityDigest !== expectedCompatibilitySha256) {
+    throw new Error(`bot schema compatibility hash mismatch: expected ${expectedCompatibilitySha256}, received ${compatibilityDigest}`);
   }
-  return { version: v, health: h, schemaSha256: digest };
+  const attestedRuntime: RuntimeAttestation = {
+    ...runtime, schemaSha256: digest, schemaCompatibilitySha256: compatibilityDigest,
+  };
+  return { version: v, health: h, runtime: attestedRuntime,
+    schemaSha256: digest, schemaCompatibilitySha256: compatibilityDigest };
 }
 
 export function normalizeInput(action: JsonObject): CompleteInput {
@@ -245,8 +320,8 @@ export function validateOfficial(
   const root = asObject(payload, 'official payload');
   const official = asObject(root.match, 'official match');
   if (official.id !== mid || official.mode !== 'versus' || official.engine_version !== EXPECTED_ENGINE
-      || official.engine_commit !== EXPECTED_COMMIT || Number(official.engine_dirty) !== 0) {
-    throw new Error('official result is not bound to the exact sf-8 match');
+      || official.engine_commit !== match.runtimeCommit || Number(official.engine_dirty) !== 0) {
+    throw new Error('official result is not bound to the attested sf-8 match');
   }
   const role = match.role;
   const ownPrefix = role === 'a' ? 'a' : 'b';
@@ -264,9 +339,11 @@ export function validateOfficial(
 
 export function createStandingController(
   options: RunnerOptions, policy: PolicyBinding, io: ControllerIo,
+  runtime: RuntimeAttestation,
 ) {
   const binding = AGENTS[options.agent];
   const implementationSha256 = computeRunnerImplementationHash();
+  const dataBoundary = runtimeDataBoundary(runtime);
   let activeMatch: JsonObject | null = null;
   let localSeq = 0;
   let matchSeqBase = 0;
@@ -292,12 +369,12 @@ export function createStandingController(
   async function handle(message: JsonObject): Promise<void> {
     switch (message.t) {
       case 'hi':
-        assertExactBuild(message, 'hi');
+        assertCompatibleRuntime(message, 'hi', runtime);
         if (message.service !== 'ringside-bot') throw new Error('unexpected SSH play service');
         io.audit.append('transport-attested', { build: message.build, protocol: message.protocol });
         return;
       case 'welcome':
-        assertExactBuild(message, 'welcome');
+        assertCompatibleRuntime(message, 'welcome', runtime);
         if (message.name !== binding.handle || message.fp !== binding.fingerprint
             || message.channel !== 'bot-api' || message.playerType !== 'bot'
             || !exactArray(message.roster, PINNED_ROSTER)) {
@@ -315,7 +392,7 @@ export function createStandingController(
         io.audit.append('queued', { character: binding.character, opponents: 'bots' });
         return;
       case 'matchStart': {
-        assertExactBuild(message, 'matchStart');
+        assertCompatibleRuntime(message, 'matchStart', runtime);
         const role = message.role;
         const mid = String(message.mid ?? '');
         const oppCursor = Number(message.oppCursor);
@@ -329,6 +406,7 @@ export function createStandingController(
         activeMatch = {
           mid, role, oppName: String(message.oppName),
           oppCharacter: PINNED_ROSTER[oppCursor], stage: String(message.stage),
+          runtimeCommit: runtime.commit, runtimeBuild: runtime.build,
         };
         matchSeqBase = localSeq;
         matchAckBase = connectionAckHighWater;
@@ -336,8 +414,11 @@ export function createStandingController(
         lastFrame = -1;
         policy.reset();
         io.audit.beginMatch(mid, {
-          ...activeMatch, runnerSchema: RUNNER_SCHEMA, build: EXPECTED_BUILD,
-          protocol: EXPECTED_PROTOCOL, schemaSha256: EXPECTED_SCHEMA_SHA256,
+          ...activeMatch, runnerSchema: RUNNER_SCHEMA, build: runtime.build,
+          commit: runtime.commit, protocol: EXPECTED_PROTOCOL,
+          schemaSha256: runtime.schemaSha256,
+          schemaCompatibilitySha256: runtime.schemaCompatibilitySha256,
+          ...dataBoundary,
           agent: options.agent, handle: binding.handle, fingerprint: binding.fingerprint,
           character: binding.character, policyId: binding.policyId, seed: options.seed,
           implementationSha256,
@@ -534,7 +615,7 @@ async function getJson(url: string): Promise<unknown> {
   return response.json();
 }
 
-export async function preflight(host: string): Promise<JsonObject> {
+export async function preflight(host: string): Promise<PreflightEvidence> {
   const base = `https://${host}`;
   const [version, health, schema] = await Promise.all([
     getJson(`${base}/version`), getJson(`${base}/api/health`), getJson(`${base}${EXPECTED_SCHEMA_PATH}`),
@@ -563,8 +644,19 @@ export async function executeRunner(
     console.log(JSON.stringify({
       runnerSchema: RUNNER_SCHEMA, dryRun: true, agent: options.agent,
       handle: binding.handle, fingerprint: binding.fingerprint, character: binding.character,
-      policyId: binding.policyId, seed: options.seed, build: EXPECTED_BUILD,
-      commit: EXPECTED_COMMIT, protocol: EXPECTED_PROTOCOL, schemaSha256: EXPECTED_SCHEMA_SHA256,
+      policyId: binding.policyId, seed: options.seed,
+      compatibility: {
+        engine: EXPECTED_ENGINE, protocol: EXPECTED_PROTOCOL,
+        schemaSha256: EXPECTED_SCHEMA_COMPATIBILITY_SHA256,
+      },
+      reviewedBaseline: {
+        build: REVIEWED_BASELINE_BUILD, commit: REVIEWED_BASELINE_COMMIT,
+        schemaSha256: REVIEWED_BASELINE_SCHEMA_SHA256,
+      },
+      runtimePolicy: {
+        commit: 'derived-at-preflight', semanticCompatibilityDrift: 'fail-closed',
+        compatibleCommitDrift: 'continue-with-warning-and-training-quarantine',
+      },
       implementationSha256,
       transport: 'ssh-play', opponents: 'bots', identity: basename(options.identity),
       requeueDelayMs: options.requeueDelayMs, requeueJitterMs: options.requeueJitterMs,
@@ -572,13 +664,29 @@ export async function executeRunner(
     return;
   }
   const preflightEvidence = await preflight(options.host);
-  const audit = new DirectoryAudit(options.outDir);
+  const dataBoundary = runtimeDataBoundary(preflightEvidence.runtime);
+  const traceDirectory = resolve(
+    options.outDir, preflightEvidence.runtime.engine, preflightEvidence.runtime.commit,
+  );
+  const audit = new DirectoryAudit(traceDirectory);
   audit.append('session-manifest', {
     runnerSchema: RUNNER_SCHEMA, agent: options.agent, handle: binding.handle,
     fingerprint: binding.fingerprint, character: binding.character, policyId: binding.policyId,
     seed: options.seed, transport: 'ssh-play', opponents: 'bots', preflight: preflightEvidence,
+    ...dataBoundary, traceDirectory,
     implementationSha256, requeueDelayMs: options.requeueDelayMs,
     requeueJitterMs: options.requeueJitterMs,
+  });
+  audit.append('runtime-alignment', {
+    level: dataBoundary.runtimeAlignment === 'reviewed-baseline' ? 'info' : 'warning',
+    disposition: dataBoundary.runtimeAlignment === 'reviewed-baseline'
+      ? 'continue-reviewed-baseline' : 'continue-compatible-quarantine',
+    actual: preflightEvidence.runtime,
+    reviewedBaseline: {
+      commit: REVIEWED_BASELINE_COMMIT, build: REVIEWED_BASELINE_BUILD,
+      schemaSha256: REVIEWED_BASELINE_SCHEMA_SHA256,
+    },
+    ...dataBoundary,
   });
   const sshArgs = [
     '-T', '-i', options.identity, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
@@ -608,7 +716,7 @@ export async function executeRunner(
     fetchOfficial: (mid) => fetchOfficial(options.host, mid),
     schedule: (fn, delay) => setTimeout(fn, delay),
     nowNs: () => process.hrtime.bigint(),
-  });
+  }, preflightEvidence.runtime);
   const lines = readline.createInterface({ input: child.stdout });
   let chain = Promise.resolve();
   lines.on('line', (raw) => {
