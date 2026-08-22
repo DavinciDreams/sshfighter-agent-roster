@@ -17,6 +17,7 @@
     "runner:codex-dgx": "tsx src/tools/codex-dgx-bounded-opponent.ts",
     "runner:omega-quickmatch": "node src/tools/codex-dgx-omega-quickmatch.mjs",
     "runner:mega-quickmatch": "node src/tools/static-router-quickmatch.mjs",
+    "runner:blanko-quickmatch": "node src/tools/static-router-quickmatch.mjs --profile blanko-oscillator-v1 --policy-mode innovation-resonant --opponents bots",
     "runner:mega": "node src/tools/durable-quickmatch-supervisor.mjs",
     "runner:xenon": "tsx src/tools/xenon-bounded-runner.ts"
   },

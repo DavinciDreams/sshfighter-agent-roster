@@ -108,6 +108,31 @@ check(parsedResonant.seedSource === 'entropy' && Number.isInteger(parsedResonant
   'resonant mode generates and records entropy when no seed is supplied');
 check(createPolicyForArgs(parsedBoundary).status().variant === 'boundary',
   'runner factory selects the adaptive controller only when requested');
+
+const blankoArgs = parseArgs([
+  '--dry-run', '--profile', 'blanko-oscillator-v1', '--policy-mode', 'innovation-resonant',
+  '--opponents', 'bots', '--seed', '20260822',
+]);
+check(blankoArgs.profile.character === 'BLANKO' && blankoArgs.opponents === 'bots',
+  'BLANKO candidate binds the bot-only pool explicitly');
+const blanko = createPolicyForArgs(blankoArgs);
+const rolling = blanko.decide(state(1, {
+  you: fighter({ x: 40, facing: 1 }), opp: fighter({ x: 110, facing: -1 }),
+}));
+check(rolling.action.motion === 'LR' && rolling.action.punch === true,
+  'BLANKO baseline converts spacing into a facing-relative Rolling Attack');
+blanko.reset();
+const antiAir = blanko.decide(state(1, {
+  you: fighter({ x: 80, facing: -1 }), opp: fighter({ x: 118, y: 18, facing: 1 }),
+}));
+check(antiAir.action.motion === 'DU' && antiAir.action.kick === true,
+  'BLANKO baseline converts an airborne approach into Vertical Roll');
+blanko.reset();
+const electric = blanko.decide(state(1, {
+  you: fighter({ x: 80, facing: 1 }), opp: fighter({ x: 118, facing: -1 }),
+}));
+check(electric.action.motion === 'DU' && electric.action.punch === true,
+  'BLANKO baseline uses Electric Thunder inside pressure range');
 assert.throws(() => parseArgs([
   '--dry-run', '--profile', 'static-byu-jumper', '--policy-mode', 'unhinged',
 ]), /policy-mode/); checks++;

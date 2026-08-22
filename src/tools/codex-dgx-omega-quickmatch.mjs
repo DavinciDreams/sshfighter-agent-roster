@@ -20,10 +20,10 @@ export const MIGRATED_FROM_UPSTREAM_PR_HEAD = 'aa72038b4aa2068ea9d295fcd2f8778f6
 export const VENDOR_SOURCE_COMMIT = '3caedf3435c12996cf4d34fb5ac76c7cd7b75076';
 export const RUNNER_SCHEMA = 'sshfighter-agent-roster/omega-quickmatch/v2';
 export const DEPLOYED_COMMIT_ATTESTED = false;
-export const RUNTIME_PROFILE_EVIDENCE = 'ringside/sf-6 health plus exact authenticated ordered 17-fighter welcome roster';
+export const RUNTIME_PROFILE_EVIDENCE = 'ringside/sf-7 health plus exact authenticated ordered 18-fighter welcome roster';
 export const PINNED_ROSTER = [
   'BYU', 'MEN', 'BLANKO', 'CHONG', 'GYLE', 'ZANG', 'DHAL', 'HONDO',
-  'KIRA', 'MAKO', 'OMEGA', 'CODEX', 'FABLE', 'MNEME', 'AJAX', 'XENON', 'UNCLOSE',
+  'KIRA', 'MAKO', 'OMEGA', 'CODEX', 'FABLE', 'MNEME', 'AJAX', 'XENON', 'MEGAWATTS', 'UNCLOSE',
 ];
 export const CHILD_TERM_GRACE_MS = 250;
 export const CHILD_KILL_GRACE_MS = 1_000;
@@ -75,10 +75,32 @@ export function validatePinnedRoster(value) {
   return [...PINNED_ROSTER];
 }
 
+export function validateServerBuild(message, options = {}) {
+  const expectedBuild = options.expectedBuild;
+  const expectedCommit = options.expectedCommit;
+  if (expectedBuild && message?.build !== expectedBuild) {
+    throw new Error(`server build mismatch: expected ${expectedBuild}, got ${String(message?.build)}`);
+  }
+  if (expectedCommit && message?.commit !== expectedCommit) {
+    throw new Error(`server commit mismatch: expected ${expectedCommit}, got ${String(message?.commit)}`);
+  }
+  const expectedEngine = expectedBuild?.split('@')[0];
+  if ((expectedBuild || expectedCommit)
+      && ((expectedEngine && message?.engine !== expectedEngine) || message?.dirty !== false)) {
+    throw new Error(`server build is not the expected clean release: ${String(message?.engine)} / ${String(message?.dirty)}`);
+  }
+  return {
+    engine: message?.engine ?? null,
+    commit: message?.commit ?? null,
+    build: message?.build ?? null,
+    dirty: message?.dirty ?? null,
+  };
+}
+
 export function validateOfficialResult(payload, options) {
   const match = payload?.match;
   if (!match || match.id !== options.matchId || match.mode !== 'versus'
-      || match.engine_version !== 'sf-6') {
+      || match.engine_version !== (options.engineVersion ?? 'sf-6')) {
     throw new Error('official result identity, mode, or engine mismatch');
   }
   const ownA = match.a_name === options.handle && match.a_char === options.character;
@@ -301,6 +323,7 @@ export function createOneMatchController(options, io) {
   const handleName = options.handle ?? HANDLE;
   const character = options.character ?? CHARACTER;
   const expectedFingerprint = options.expectedFingerprint ?? EXPECTED_FINGERPRINT;
+  const opponents = options.opponents ?? 'all';
   const decidePolicy = options.decide ?? decide;
   const resetPolicy = options.reset ?? resetRng;
   let matchId = '';
@@ -342,6 +365,7 @@ export function createOneMatchController(options, io) {
         throw new Error(`identity mismatch: ${String(message.name)} / ${String(message.fp)}`);
       }
       io.append('identity_gate', { handle: message.name, fingerprint: message.fp });
+      io.append('build_gate', validateServerBuild(message, options));
       roster = validatePinnedRoster(message.roster);
       const cursor = roster.indexOf(character);
       io.append('roster_gate', { cursor, rosterCount: roster.length });
@@ -351,15 +375,19 @@ export function createOneMatchController(options, io) {
         io.append('queue_window_expired', { windowMs: options.windowMs });
         stop('bounded_queue_window_expired');
       }, options.windowMs);
-      send({ t: 'queue', char: character }, 'welcome_zero_queue_preflight');
+      send({ t: 'queue', char: character, opponents }, 'welcome_zero_queue_preflight');
     } else if (message.t === 'queued') {
       if (message.char !== character) throw new Error(`queued wrong character: ${message.char}`);
+      if (message.opponents && message.opponents !== opponents) {
+        throw new Error(`queued opponent pool mismatch: expected ${opponents}, got ${String(message.opponents)}`);
+      }
     } else if (message.t === 'matchStart') {
       if (matched) throw new Error('second matchStart rejected');
       matched = true;
       if (queueTimer !== null) io.cancel(queueTimer);
       const ownCharacter = roster[Number(message.yourCursor)] ?? 'UNKNOWN';
       if (ownCharacter !== character) throw new Error(`matchStart character mismatch: ${ownCharacter}`);
+      io.append('build_gate', { boundary: 'matchStart', ...validateServerBuild(message, options) });
       matchId = String(message.mid ?? '');
       if (!matchId) throw new Error('matchStart missing match id');
       const opponentCharacter = roster[Number(message.oppCursor)] ?? 'UNKNOWN';

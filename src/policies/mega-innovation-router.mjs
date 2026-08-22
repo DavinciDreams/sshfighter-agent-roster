@@ -2,7 +2,7 @@
 // profiles. It deliberately leaves the frozen static router untouched and
 // exposes adaptation only through an explicit runner mode.
 import {
-  DEFAULT_POLICY_SEED, createSeededRandom, createStaticGymPolicy, staticProfile,
+  DEFAULT_POLICY_SEED, createSeededRandom, createStaticGymPolicy, runnerProfile,
 } from './static-router-gym.mjs';
 
 export const MEGA_POLICY_MODES = Object.freeze([
@@ -72,6 +72,14 @@ export class MegaKickModel {
 
 function neutral() { return { t: 'input', moveX: 0, motion: 'N' }; }
 
+function blankoSpecial(self, kind) {
+  const forward = self.facing === 1 ? 'R' : 'L';
+  const back = self.facing === 1 ? 'L' : 'R';
+  if (kind === 'rolling') return { t: 'input', moveX: 0, motion: `${back}${forward}`, punch: true };
+  if (kind === 'vertical') return { t: 'input', moveX: 0, motion: 'DU', kick: true };
+  return { t: 'input', moveX: 0, motion: 'DU', punch: true };
+}
+
 function freshEvidence() {
   return {
     damageTaken: 0, damageDealt: 0, confirmedHits: 0,
@@ -101,7 +109,7 @@ export function createMegaInnovationPolicy(
   if (!MEGA_POLICY_MODES.includes(mode) || mode === 'static') {
     throw new Error(`adaptive MEGA policy mode required; got ${String(mode)}`);
   }
-  const profile = staticProfile(profileId);
+  const profile = runnerProfile(profileId);
   const variant = mode === 'innovation-resonant' ? 'resonant' : 'boundary';
   const config = { ...DEFAULT_MEGA_INNOVATION_CONFIG, ...overrides };
   if (!(config.oscillatorGamma > 0)) throw new Error('oscillatorGamma must remain positive');
@@ -314,6 +322,9 @@ export function createMegaInnovationPolicy(
       return { action, reason: 'guard_threat' };
     }
     if (opponent.y > 6 && distance < 46) {
+      if (profile.character === 'BLANKO') {
+        return { action: blankoSpecial(self, 'vertical'), reason: 'guard_blanko_vertical_anti_air' };
+      }
       action.kick = true;
       return { action, reason: 'guard_anti_air_kick' };
     }
@@ -341,9 +352,25 @@ export function createMegaInnovationPolicy(
       action.moveX = away; action.down = true;
       return { action, reason: 'pressure_projectile_guard' };
     }
+    if (profile.character === 'BLANKO' && opponent.y > 7 && distance < 64 && !opponent.active) {
+      return { action: blankoSpecial(self, 'vertical'), reason: 'pressure_blanko_vertical_anti_air' };
+    }
     if (opponent.active && distance < 48) {
       action.moveX = away; action.down = true;
       return { action, reason: 'pressure_active_guard' };
+    }
+    if (profile.character === 'BLANKO' && distance <= 32) {
+      if (random.next() < 0.28) {
+        action.throw = true;
+        return { action, reason: 'pressure_blanko_throw' };
+      }
+      return { action: blankoSpecial(self, 'electric'), reason: 'pressure_blanko_electric' };
+    }
+    if (profile.character === 'BLANKO' && distance <= 58) {
+      return { action: blankoSpecial(self, 'electric'), reason: 'pressure_blanko_electric' };
+    }
+    if (profile.character === 'BLANKO' && distance <= 116 && opponent.attack === 'none') {
+      return { action: blankoSpecial(self, 'rolling'), reason: 'pressure_blanko_rolling' };
     }
     if (distance <= 25) {
       if (random.next() < 0.35) action.throw = true;

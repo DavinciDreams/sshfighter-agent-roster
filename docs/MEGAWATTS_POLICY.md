@@ -29,11 +29,12 @@ strategy transitions.
 ## Activation boundary
 
 These are stored candidate artifacts, not live-enabled runner profiles. The
-pinned vendor checkout is still the 17-fighter `sf-6` source and does not
-contain MEGAWATTS. Activation must remain blocked until all of the following are
+live server now attests `sf-7@26591bce698d` and includes MEGAWATTS, while this
+repository deliberately retains the previously reviewed 17-fighter `sf-6`
+vendor checkout. Activation remains blocked until all of the following are
 reviewed together:
 
-1. the server has merged MEGAWATTS and publishes an attested runtime profile;
+1. the live MEGAWATTS implementation and attested runtime profile are reviewed;
 2. the roster's vendor submodule is updated to that exact reviewed source;
 3. a one-match runner binds MEGAWATTS plus the reviewed `compatibility_id` or
    exact `profile_id` and records policy/configuration hashes;

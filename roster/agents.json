@@ -3,8 +3,15 @@
   "vendor": {
     "repository": "https://github.com/thomasdavis/sshfighter.com.git",
     "commit": "3caedf3435c12996cf4d34fb5ac76c7cd7b75076",
-    "runtimeProfile": "ringside/sf-6 plus exact authenticated 17-fighter roster",
+    "reviewedSourceProfile": "ringside/sf-6 plus exact authenticated 17-fighter roster",
     "deployedCommitAttested": false
+  },
+  "liveRuntime": {
+    "engine": "sf-7",
+    "commit": "26591bce698dad4516d59614feee67cc6d636572",
+    "build": "sf-7@26591bce698d",
+    "rosterCount": 18,
+    "attestation": "version plus authenticated welcome"
   },
   "policyArtifacts": [
     {
@@ -59,8 +66,28 @@
       "transport": "quick-match-outgoing",
       "entrypoint": "src/tools/codex-dgx-omega-quickmatch.mjs",
       "test": "test:omega-quickmatch",
-      "runnerSourceSha256": "2b5a109ac946c87f8c98b29f59d01758a3733b1c989cbdff93bcd67cdab88f6d",
+      "runnerSourceSha256": "3495379ced0c70b1ac0034822cc602fa23c8b239e2ddf918df7dadff04e1e414",
       "policyFunctionSha256": "ab9b903e9ba74b046b1439adccfedc33224c8ed247355335931f026018f86497",
+      "maxMatches": 1
+    },
+    {
+      "id": "blanko-oscillator-candidate",
+      "agent": "BLANK",
+      "handle": "BLANK-BOT",
+      "expectedFingerprint": "SHA256:xd/3Gvx2khlsWD2qBEU2kR7CUaMn1TDUTIV7qxNK7R8",
+      "character": "BLANKO",
+      "profile": "blanko-oscillator-v1",
+      "policyMode": "innovation-resonant",
+      "opponents": "bots",
+      "expectedBuild": "sf-7@26591bce698d",
+      "expectedCommit": "26591bce698dad4516d59614feee67cc6d636572",
+      "transport": "quick-match-one-bout-candidate",
+      "entrypoint": "src/tools/static-router-quickmatch.mjs",
+      "test": "test:mega-innovation-policy",
+      "runnerSourceSha256": "779e059c8f8926465dc5933f4f1f3ad20db7e8b5cab8b2cdf1335147b87653cc",
+      "policyModuleSha256": "d24fa3c81c7ca3bcb79d8695c5c3e1768eba8e1390d4e33df8db66ce95140416",
+      "innovationPolicyModuleSha256": "71e955e4979bcef9c42d0799546910d983cecf3f2dcf88c7e0753247650dac35",
+      "sharedTransportSha256": "3495379ced0c70b1ac0034822cc602fa23c8b239e2ddf918df7dadff04e1e414",
       "maxMatches": 1
     },
     {
@@ -77,11 +104,11 @@
       "entrypoint": "src/tools/durable-quickmatch-supervisor.mjs",
       "oneMatchChild": "src/tools/static-router-quickmatch.mjs",
       "test": "test:static-router-quickmatch",
-      "childRunnerSourceSha256": "f4223d6582eed5ca8045176e6ba2b5408c6bb79759498e92d9692f230044d72f",
+      "childRunnerSourceSha256": "779e059c8f8926465dc5933f4f1f3ad20db7e8b5cab8b2cdf1335147b87653cc",
       "supervisorSourceSha256": "32c462f3d002cb332f3c02e6088013939fde6c0b135bde10552d027f9c60fa40",
-      "policyModuleSha256": "79a73115877331c190841b83c03d53dbb6616dc90262a075d1a87b5c59db7674",
-      "innovationPolicyModuleSha256": "24d604dabff95a35fa7252096a8f6b7739d3d18713ca1c51d77bf6414c041263",
-      "sharedTransportSha256": "2b5a109ac946c87f8c98b29f59d01758a3733b1c989cbdff93bcd67cdab88f6d",
+      "policyModuleSha256": "d24fa3c81c7ca3bcb79d8695c5c3e1768eba8e1390d4e33df8db66ce95140416",
+      "innovationPolicyModuleSha256": "71e955e4979bcef9c42d0799546910d983cecf3f2dcf88c7e0753247650dac35",
+      "sharedTransportSha256": "3495379ced0c70b1ac0034822cc602fa23c8b239e2ddf918df7dadff04e1e414",
       "staticRouterWeightSha256": "ee1f5ffcb83b878bb02ce0c5b659f91a6b5b988ad971912972f9b0605b74ac4f",
       "maxMatchesPerChild": 1,
       "supervisorMatchLimit": "operator-configured; 0 means durable"

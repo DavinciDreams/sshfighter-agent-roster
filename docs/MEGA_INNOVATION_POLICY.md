@@ -8,11 +8,14 @@ one-match child exposes two optional policy modes for controlled evaluation:
 | `innovation-boundary` | round boundary only | fixed recorded seed | frozen baseline, guard, pressure |
 | `innovation-resonant` | inside a round after multi-cue agreement and minimum dwell | entropy seed by default; exact replay with `--seed` | frozen baseline, guard, pressure |
 
-The heads drive the existing BYU, GYLE, or MNEME profiles. They do not assume
-that MEGAWATTS exists on the live roster and do not branch on the opponent's
-character name. The `baseline` head is the unchanged frozen static policy.
-`guard` and `pressure` are wire-safe generic heads whose normal kicks have
-literal attempt/hit/miss feedback.
+The heads drive the existing BYU, GYLE, or MNEME profiles. An experimental
+`blanko-oscillator-v1` transfer keeps the same oscillator, evidence model, and
+switching rule while replacing the tactical actions with BLANKO mechanics:
+Rolling Attack for open-lane closure, Vertical Roll for anti-air, and Electric
+Thunder for close pressure. It does not enter the durable MEGA rotation. The
+policies do not assume that MEGAWATTS exists on the live roster and do not
+branch on the opponent's character name. `guard` and `pressure` remain
+wire-safe heads whose literal normal kicks retain attempt/hit/miss feedback.
 
 ## Signal model
 
@@ -56,6 +59,8 @@ pnpm runner:mega-quickmatch --dry-run \
 pnpm runner:mega-quickmatch --dry-run \
   --profile static-byu-jumper \
   --policy-mode innovation-resonant
+
+pnpm runner:blanko-quickmatch --dry-run --seed 20260822
 ```
 
 The durable supervisor does not forward an adaptive policy mode. This keeps
@@ -80,9 +85,11 @@ zero technical failures. Raw-queue static/linear/Chebyshev points were
 realization, but every controller collapsed in absolute terms. This is a
 controller/deployment-model negative, not promotion evidence.
 
-Before any live bout, rebase this candidate onto the separate live-evaluation
-telemetry work, freeze the runner commit and policy/config hashes, bind an exact
-opponent and character, and predeclare a matched static baseline. Keep official
+Before any live bout, freeze the runner commit and policy/config hashes. A
+Quick Match smoke must select the explicit `bots` pool and pin the exact clean
+server build; it is transport/behavior evidence, not efficacy. An efficacy
+claim additionally requires a coordinated exact opponent/character and a
+predeclared matched baseline, which Quick Match cannot guarantee. Keep official
 match rows and transport ledgers separate from offline Gym evidence. Do not
 reuse the completed matrix seeds or mix its evidence into this candidate's
 post-intervention diagnostic block.

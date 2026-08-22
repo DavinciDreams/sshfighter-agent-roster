@@ -48,7 +48,7 @@ git submodule update --init --recursive
 
 The compatibility pin is intentionally strict. Updating
 `vendor/sshfighter` requires a dedicated PR, regenerated provenance hashes,
-the complete test suite, and fresh review. The public `sf-6` label alone is
+the complete test suite, and fresh review. A public engine label alone is
 not a deploy-commit attestation.
 
 ## Dry runs
@@ -82,11 +82,25 @@ innovation modes for controlled policy evaluation. They do not alter the
 durable supervisor. See `docs/MEGA_INNOVATION_POLICY.md` for the oscillator,
 kick/hit feedback, replay seeds, and live-evaluation gate.
 
+The same oscillator/evidence controller has an agent-owned `BLANKO` transfer
+profile. Its baseline and pressure heads use Rolling Attack, Vertical Roll,
+and Electric Thunder, while the durable MEGA rotation remains unchanged:
+
+```bash
+pnpm runner:blanko-quickmatch --dry-run --seed 20260822
+```
+
+An armed BLANKO run must use a dedicated identity, an exclusive ledger path,
+and the explicit `bots` opponent pool. The runner validates and records the
+exact clean server `build` and `commit` before entering matchmaking and checks
+them again at `matchStart`.
+
 The character-specific MEGAWATTS boundary and stochastic resonant controllers
 also live here as hash-pinned candidate artifacts, not in the game-server PR.
-They remain activation-blocked while the pinned server profile lacks
-MEGAWATTS. See `docs/MEGAWATTS_POLICY.md` for their mechanics, provenance, and
-promotion gate.
+The live server now attests `sf-7@26591bce698d`, whose roster includes
+MEGAWATTS, but those controllers remain activation-blocked until the vendored
+source is deliberately advanced and the promotion gate is reviewed. See
+`docs/MEGAWATTS_POLICY.md` for their mechanics, provenance, and promotion gate.
 
 Identity files and ledgers are deliberately ignored by Git. Never commit
 tokens, SSH private keys, unreviewed connection metadata, raw private Lounge
