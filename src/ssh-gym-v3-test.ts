@@ -71,6 +71,23 @@ check(after.state.a.phase === 'fight' && after.state.a.ack === 95 && after.state
 validateAgainstSchema(after.state.a, pinnedBotApiSchema().serverMessages.state, pinnedBotApiSchema()); checks++;
 validateAgainstSchema(after.state.b, pinnedBotApiSchema().serverMessages.state, pinnedBotApiSchema()); checks++;
 
+const beforeBranch = canonicalJson(gym.state());
+const branchSteps = [
+  { inputsA: { punch: true }, inputsB: { moveX: -1 } },
+  ...Array.from({ length: 12 }, () => ({ inputsA: {}, inputsB: { moveX: -1 } })),
+];
+const branched = gym.branch({ steps: branchSteps, includeTrajectory: true }) as any;
+check(branched.simulatedFrames === 13 && branched.state.a.frame === after.state.a.frame + 13,
+'bounded branch rolls an action-conditioned continuation forward');
+check(branched.trajectory.length === 13
+  && branched.trajectory[0].a.frame === after.state.a.frame + 1,
+'optional branch trajectory exposes real successor windows without changing the parent');
+check(canonicalJson(gym.state()) === beforeBranch,
+'branch restores match, ACK, delay queues, and RNG state without mutating the parent timeline');
+check(canonicalJson(gym.branch({ steps: branchSteps, includeTrajectory: true })) === canonicalJson(branched),
+'restored RNG makes repeated counterfactual branches byte deterministic');
+assert.throws(() => gym.branch({ steps: [] }), /1\.\.256/); checks++;
+
 const detailed = makeMatch(makeFighter('a', 'MNEME', 'a'), makeFighter('b', 'XENON', 'b'));
 for (let index = 0; index < 95; index++) stepMatch(detailed, neutral(), neutral());
 detailed.a.x = 70; detailed.b.x = 180; detailed.a.facing = 1; detailed.b.facing = -1;

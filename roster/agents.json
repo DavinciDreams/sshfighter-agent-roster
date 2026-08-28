@@ -25,7 +25,7 @@
       "botProtocol": 2,
       "schemaPath": "/api/bot/schema",
       "schemaSha256": "666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151",
-      "implementationSha256": "98cdd7bd7027703bff150ec29a133c83840052a4444828b3c63d42fba4f51673",
+      "implementationSha256": "13c4bcbd75719757357a5aa31642efb21feac66cb93080f63f7c43a85b6cdca5",
       "observationProfiles": ["bot-protocol-v2", "engine-oracle-v1"],
       "actuationProfiles": ["snapshot-input-v2", "round-safe-fifo-v2"],
       "datasetEpoch": "sf8/protocol2"

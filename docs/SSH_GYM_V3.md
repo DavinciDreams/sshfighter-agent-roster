@@ -25,6 +25,12 @@ neutral/false and omitted motion becomes `N`. `snapshot-input-v2` applies one
 snapshot per simulated state. `round-safe-fifo-v2` is a synthetic delay profile
 that is cleared outside the fight phase so an old edge cannot cross rounds.
 
+The offline-only `branch` command accepts 1--256 step commands, evaluates the
+counterfactual continuation, optionally returns every successor state, and then restores the authoritative match, ACKs,
+delay queues, and RNG state. Repeating the same branch is byte deterministic.
+This is the candidate-set primitive used for decision-obstruction datasets; it
+does not claim an equivalent live-server operation.
+
 ```bash
 pnpm test:ssh-gym-v3
 pnpm ssh-gym-v3

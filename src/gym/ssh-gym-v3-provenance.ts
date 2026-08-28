@@ -1,6 +1,6 @@
 /** Reviewed, non-self-referential pins for the current-source protocol-v2 Gym. */
 export const SSH_GYM_V3_SCHEMA = 'sshfighter-agent-roster/ssh-gym-v3/bot-protocol-v2';
-export const SSH_GYM_V3_IMPLEMENTATION_SHA256 = '98cdd7bd7027703bff150ec29a133c83840052a4444828b3c63d42fba4f51673';
+export const SSH_GYM_V3_IMPLEMENTATION_SHA256 = '13c4bcbd75719757357a5aa31642efb21feac66cb93080f63f7c43a85b6cdca5';
 export const PINNED_VENDOR_COMMIT = '68218a463e631ec4705cb684daef4ba259bff573';
 export const PINNED_ENGINE_VERSION = 'sf-8';
 export const PINNED_BUILD = 'sf-8@68218a463e63';

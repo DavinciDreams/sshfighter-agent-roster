@@ -30,7 +30,8 @@ export interface ResetRequest {
   inputDelayA?: number; inputDelayB?: number;
 }
 export interface StepRequest { n?: number; inputsA?: GymInput; inputsB?: GymInput }
-export interface GymCommand extends Partial<ResetRequest>, Partial<StepRequest> { cmd?: string }
+export interface BranchRequest { steps: StepRequest[]; includeTrajectory?: boolean }
+export interface GymCommand extends Partial<ResetRequest>, Partial<StepRequest>, Partial<BranchRequest> { cmd?: string }
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const sourceRoot = resolve(moduleDir, '../..');
@@ -86,6 +87,11 @@ export class RoundSafeSnapshotFifo {
       throw new Error('input delay must be an integer from 0 to 120');
   }
   reset(): void { this.queue.length = 0; }
+  snapshot(): Inputs[] { return this.queue.map((input) => ({ ...input })); }
+  restore(queue: readonly Inputs[]): void {
+    this.queue.length = 0;
+    this.queue.push(...queue.map((input) => ({ ...input })));
+  }
   emit(input: Inputs, phase: string): Inputs {
     if (phase !== 'fight') { this.reset(); return normalizeSnapshotInput({}); }
     if (this.delay === 0) return { ...input };
@@ -189,7 +195,14 @@ export class SshGymV3 {
   private fifoB = new RoundSafeSnapshotFifo(0);
   private ackA = 0;
   private ackB = 0;
-  private random: () => number = () => 0;
+  private randomState = 0;
+  private readonly random = (): number => {
+    this.randomState = (this.randomState + 0x6d2b79f5) >>> 0;
+    let t = this.randomState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 
   private withRandom<T>(action: () => T): T {
     const prior = Math.random; Math.random = this.random;
@@ -229,8 +242,7 @@ export class SshGymV3 {
     if (!['snapshot-input-v2', 'round-safe-fifo-v2'].includes(actuation)) throw new Error('unknown actuation profile');
     const delayA = request.inputDelayA ?? 0, delayB = request.inputDelayB ?? 0;
     if (actuation === 'snapshot-input-v2' && (delayA !== 0 || delayB !== 0)) throw new Error('snapshot-input-v2 requires zero delay');
-    let state = request.seed >>> 0;
-    this.random = () => { state = (state + 0x6d2b79f5) >>> 0; let t = state; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    this.randomState = request.seed >>> 0;
     this.observationProfile = observation as ObservationProfile;
     this.actuationProfile = actuation as ActuationProfile;
     this.fifoA = new RoundSafeSnapshotFifo(delayA); this.fifoB = new RoundSafeSnapshotFifo(delayB);
@@ -253,6 +265,35 @@ export class SshGymV3 {
     }
     return { state: this.state(), appliedA, appliedB };
   }
+  branch(request: BranchRequest): { state: object; appliedA: Inputs; appliedB: Inputs;
+                                   simulatedFrames: number; trajectory?: object[] } {
+    if (!Array.isArray(request.steps) || request.steps.length < 1 || request.steps.length > 256)
+      throw new Error('branch steps must contain 1..256 commands');
+    const simulatedFrames = request.steps.reduce((total, step) => total + (step.n ?? 1), 0);
+    if (simulatedFrames > 10000) throw new Error('branch may simulate at most 10000 frames');
+    const snapshot = {
+      match: structuredClone(this.requireMatch()),
+      fifoA: this.fifoA.snapshot(), fifoB: this.fifoB.snapshot(),
+      ackA: this.ackA, ackB: this.ackB, randomState: this.randomState,
+    };
+    try {
+      let result: { state: object; appliedA: Inputs; appliedB: Inputs } | undefined;
+      const trajectory: object[] = [];
+      for (const step of request.steps) {
+        for (let index = 0; index < (step.n ?? 1); index++) {
+          result = this.step({ ...step, n: 1 });
+          if (request.includeTrajectory) trajectory.push(result.state);
+        }
+      }
+      return { ...result!, simulatedFrames,
+        ...(request.includeTrajectory ? { trajectory } : {}) };
+    } finally {
+      this.match = snapshot.match;
+      this.fifoA.restore(snapshot.fifoA); this.fifoB.restore(snapshot.fifoB);
+      this.ackA = snapshot.ackA; this.ackB = snapshot.ackB;
+      this.randomState = snapshot.randomState;
+    }
+  }
   handle(message: GymCommand): object {
     switch (message?.cmd) {
       case 'ping': return { ok: true, pong: true };
@@ -263,6 +304,7 @@ export class SshGymV3 {
       case 'reset': return { ok: true, state: this.reset(message as unknown as ResetRequest) };
       case 'state': return { ok: true, state: this.state() };
       case 'step': return { ok: true, ...this.step(message) };
+      case 'branch': return { ok: true, ...this.branch(message as BranchRequest) };
       default: throw new Error(`unknown command: ${String(message?.cmd)}`);
     }
   }
