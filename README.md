@@ -57,7 +57,7 @@ not a deploy-commit attestation.
 
 ## Current-live Gym
 
-SSH Gym v3 pins exact `sf-8@dae9cd845790`, protocol 2, and reuses upstream's
+SSH Gym v3 pins exact `sf-8@68218a463e63`, protocol 2, and reuses upstream's
 canonical `botStateFor` observation projection and `botApiSchema` contract.
 It is a separate epoch from historical Gym v2 evidence. See
 [`docs/SSH_GYM_V3.md`](docs/SSH_GYM_V3.md).

@@ -1,7 +1,7 @@
 # SSH Gym v3
 
 SSH Gym v3 is the current-source offline environment for exact
-`sf-8@dae9cd845790`, bot protocol 2. It is additive to the historical SSH Gym
+`sf-8@68218a463e63`, bot protocol 2. It is additive to the historical SSH Gym
 v2 `sf-6`/`bot-wire-v1` evidence and must not be used to relabel or pool those
 rows.
 
@@ -35,6 +35,7 @@ digests, seed, stage, fighters, actuation profile, and delays. Keep sf6/v1,
 sf7/v1, and sf8/v2 dataset strata separate unless an explicit transformation
 or ablation is declared in advance.
 
-The pinned source commit is an offline mechanics/observation identity. It does
-not attest which commit is deployed by the live service; live runs must record
-and validate the public build independently.
+The pinned source commit is an offline mechanics/observation identity. It
+matches the live build attested on 2026-08-28, but that observation is not a
+permanent deployment claim: live runs must still record and validate their
+public build independently.

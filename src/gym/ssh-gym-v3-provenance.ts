@@ -1,12 +1,12 @@
 /** Reviewed, non-self-referential pins for the current-source protocol-v2 Gym. */
 export const SSH_GYM_V3_SCHEMA = 'sshfighter-agent-roster/ssh-gym-v3/bot-protocol-v2';
 export const SSH_GYM_V3_IMPLEMENTATION_SHA256 = '98cdd7bd7027703bff150ec29a133c83840052a4444828b3c63d42fba4f51673';
-export const PINNED_VENDOR_COMMIT = 'dae9cd8457901ba1316f3230fba5fb28fc14b751';
+export const PINNED_VENDOR_COMMIT = '68218a463e631ec4705cb684daef4ba259bff573';
 export const PINNED_ENGINE_VERSION = 'sf-8';
-export const PINNED_BUILD = 'sf-8@dae9cd845790';
+export const PINNED_BUILD = 'sf-8@68218a463e63';
 export const PINNED_BOT_PROTOCOL = 2;
 export const PINNED_SCHEMA_PATH = '/api/bot/schema';
-export const PINNED_SCHEMA_SHA256 = '4e0f9b1a13386d88ea64e2beba0e99ee4ffbc5815edb9ec9b7c0d4fc2939e855';
+export const PINNED_SCHEMA_SHA256 = '666d21cf91df9b7925eb27e74280f1ddad6b656739e61f703e0336446a25d151';
 
 export const PINNED_ROSTER = [
   'BYU', 'MEN', 'BLANKO', 'CHONG', 'GYLE', 'ZANG', 'DHAL', 'HONDO', 'KIRA',
@@ -14,10 +14,10 @@ export const PINNED_ROSTER = [
 ] as const;
 
 export const PINNED_VENDOR_FILES = {
-  'package.json': '5750781fd11e4a8f560c3896307814db9bb82223fab074d8b6903581f72d9c5b',
+  'package.json': 'a89f1c21c9112b8c9118e4495bb3b55382a4f6368c10fa1386c7cacfc08e9915',
   'src/api/bot-schema.ts': '3932b31a2c35db0a71a8f5507ddd7cc112729ef1fadd0d3ad5dbd2f75c8f8c0b',
   'src/api/bot-server.ts': 'ad286523fd95c01f4ffe7a7b84e3e7d09a6c5a565c5b56662627453b526c63c8',
-  'src/cluster/coordinator.ts': 'f6b90485b3f1c09b63d85aa69a94fb2a9112f644ec93a1e30436fe1903efadf9',
+  'src/cluster/coordinator.ts': '2b0fc87053447c7542b8ff31254b6cda8aea463816d278ae840b79648a38120e',
   'src/game/engine.ts': '43c7de52b65d4ca99f63af234196342898d97ed27bd7f2b3968e7d78c79e5e61',
   'src/game/moves.ts': '7e6ece80dde381f7ab2cc6d343481b6539771f902e8ca7054d3853d7e0014921',
   'src/game/roster.ts': '5ea2d78d4fadc42aad5453d66d3db61b098d764b0e79efd7f0ce980874966299',
